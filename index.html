@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scalp Ingredient Checker</title>
+<meta name="description" content="Check hair and skin products for ingredients that feed Malassezia, the yeast behind seborrhoeic dermatitis. Runs in your browser; nothing is uploaded.">
+<meta name="theme-color" content="#5b3e9e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scalp Check">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+
+:root {
+  /* Layout: one narrow column read like a pharmacist marking up a product label:
+     input, verdict, the label itself with its 1% line, then the evidence. */
+  --paper: #f2f4ef;
+  --surface: #ffffff;
+  --ink: #1b2130;
+  --muted: #5b6371;
+  --rule: #d5dad1;
+  --accent: #5b3e9e;           /* gentian violet: the classic antifungal dye */
+  --accent-soft: #ece7f7;
+
+  --sev-high: #c03a22;
+  --sev-moderate: #b8730a;
+  --sev-low: #8a8216;
+  --sev-minimal: #2c7653;
+  --sev-neutral: #9097a0;
+  --sev-benefit: var(--accent);
+  --sev-unknown: #6b7280;
+  --sel: #fff3c4;
+
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --step--1: 0.84rem;
+  --step-0: 1rem;
+  --step-1: 1.2rem;
+  --step-2: 1.55rem;
+  --step-3: 2.1rem;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111419; --surface: #191d24; --ink: #e7e9e4; --muted: #9ba2ad; --rule: #2c323b;
+    --accent: #a993ec; --accent-soft: #2a2440;
+    --sev-high: #ff7b63; --sev-moderate: #f1a73a; --sev-low: #cfc455; --sev-minimal: #5cc59a;
+    --sev-neutral: #6f7781; --sev-unknown: #9aa1ab; --sel: #3b3416;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111419; --surface: #191d24; --ink: #e7e9e4; --muted: #9ba2ad; --rule: #2c323b;
+  --accent: #a993ec; --accent-soft: #2a2440;
+  --sev-high: #ff7b63; --sev-moderate: #f1a73a; --sev-low: #cfc455; --sev-minimal: #5cc59a;
+  --sev-neutral: #6f7781; --sev-unknown: #9aa1ab; --sel: #3b3416;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--step-0); line-height: 1.55;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.wrap { max-width: 740px; margin: 0 auto; padding: 28px 18px 64px; display: grid; gap: 22px; }
+
+header { display: grid; gap: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); letter-spacing: .02em; }
+h1 {
+  font-family: var(--font-display); font-stretch: 72%; font-weight: 800; text-transform: uppercase;
+  font-size: clamp(2rem, 7vw, 3rem); line-height: .95; letter-spacing: -.005em; margin: 0; text-wrap: balance;
+}
+.lede { margin: 0; max-width: 62ch; color: var(--muted); }
+h2 {
+  font-family: var(--font-display); font-stretch: 80%; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; font-size: var(--step-0); margin: 0; text-wrap: balance;
+}
+h3 { font-family: var(--font-display); font-stretch: 90%; font-weight: 700; font-size: var(--step-1); margin: 0; }
+
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; }
+
+/* Input */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+.tab {
+  appearance: none; border: 0; background: none; padding: 8px 12px 10px; cursor: pointer;
+  font-family: var(--font-display); font-stretch: 85%; font-weight: 600; color: var(--muted);
+  border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap;
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.panel { display: grid; gap: 10px; }
+.panel[hidden] { display: none; }
+label.lbl { font-weight: 700; font-size: var(--step--1); }
+textarea {
+  width: 100%; min-height: 120px; resize: vertical; padding: 12px; border-radius: 8px;
+  border: 1px solid var(--rule); background: var(--paper); line-height: 1.45;
+  font-family: var(--font-display); font-stretch: 88%; font-size: 0.95rem;
+}
+.help { font-size: var(--step--1); color: var(--muted); margin: 0; max-width: 64ch; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 3px; background: var(--paper); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: var(--step--1); font-weight: 700; color: var(--muted); }
+.seg input:checked + label { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.seg input:focus-visible + label { outline: 3px solid var(--accent); outline-offset: 1px; }
+.btn {
+  appearance: none; border: 1px solid var(--ink); background: var(--ink); color: var(--surface);
+  padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 700;
+}
+.btn.secondary { background: transparent; color: var(--ink); border-color: var(--rule); }
+.btn.claude { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  appearance: none; border: 1px solid var(--rule); background: var(--paper); border-radius: 999px;
+  padding: 4px 10px; font-size: var(--step--1); cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); }
+.status { font-size: var(--step--1); color: var(--muted); min-height: 1.4em; }
+.status.err { color: var(--sev-high); }
+.preview { max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid var(--rule); display: block; }
+input[type=file] { font-size: var(--step--1); }
+.busy { display: none; align-items: center; gap: 10px; font-size: var(--step--1); }
+.busy.on { display: flex; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite ease-in-out; }
+@keyframes pulse { 0%,100% { opacity: .25 } 50% { opacity: 1 } }
+
+/* Verdict */
+.verdict { position: relative; padding-left: 24px; overflow: hidden; }
+.verdict::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: var(--c, var(--sev-neutral)); }
+.verdict .level {
+  font-family: var(--font-display); font-stretch: 75%; font-weight: 800; text-transform: uppercase;
+  font-size: var(--step-3); line-height: 1; color: var(--c); margin: 0;
+}
+.verdict .what { margin: 0; color: var(--muted); font-size: var(--step--1); font-family: var(--font-mono); }
+.verdict p.reason { margin: 0; max-width: 64ch; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: var(--step--1); color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); }
+.callout { border: 1px dashed var(--rule); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; font-size: var(--step--1); }
+.callout.good { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+
+.sev-high { --c: var(--sev-high); }
+.sev-moderate { --c: var(--sev-moderate); }
+.sev-low { --c: var(--sev-low); }
+.sev-minimal { --c: var(--sev-minimal); }
+.sev-neutral { --c: var(--sev-neutral); }
+.sev-benefit { --c: var(--sev-benefit); }
+.sev-unknown { --c: var(--sev-unknown); }
+
+/* Label strip */
+.labelcard { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0; overflow: hidden; }
+.labelhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.labelhead .src { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); }
+.strip {
+  padding: 16px 18px 18px; font-family: var(--font-display); font-stretch: 82%; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .015em; font-size: 0.98rem; line-height: 2.15;
+}
+.strip .lead { font-weight: 800; margin-right: 4px; }
+.ing {
+  display: inline; background: none; border: 0; padding: 1px 2px; margin: 0; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--ink); border-radius: 3px;
+  text-decoration-line: underline; text-decoration-color: var(--c); text-decoration-thickness: 3px; text-underline-offset: 5px;
+}
+.ing.sev-neutral { text-decoration-thickness: 1px; text-decoration-style: dotted; }
+.ing.sev-minimal { text-decoration-thickness: 2px; }
+.ing.sev-unknown { text-decoration-style: dashed; text-decoration-thickness: 2px; }
+.ing sup { font-family: var(--font-mono); font-size: 0.62em; color: var(--muted); margin-right: 2px; letter-spacing: 0; }
+.ing[aria-pressed="true"] { background: var(--sel); }
+.ing .flag { font-family: var(--font-mono); font-size: .7em; color: var(--sev-moderate); margin-left: 1px; }
+.oneline {
+  display: inline-block; font-family: var(--font-mono); text-transform: none; letter-spacing: 0; font-size: 0.68rem; line-height: 1.3;
+  border-left: 2px solid var(--ink); padding: 0 6px; margin: 0 6px 0 2px; color: var(--ink); vertical-align: middle;
+  background: repeating-linear-gradient(90deg, transparent 0 4px, var(--rule) 4px 5px);
+}
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 18px 14px; font-size: 0.78rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 16px; height: 0; border-bottom: 3px solid var(--c); }
+.legend .sev-neutral i { border-bottom: 1px dotted var(--c); }
+.legend .sev-unknown i { border-bottom: 2px dashed var(--c); }
+
+.inspector { border-top: 1px solid var(--rule); padding: 14px 18px 18px; display: grid; gap: 8px; background: var(--paper); }
+.inspector .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.inspector .pos { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); }
+.inspector p { margin: 0; max-width: 64ch; }
+.pill {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: .02em;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--c); color: var(--c); white-space: nowrap; line-height: 1.5;
+}
+.pill.solid { background: var(--c); color: var(--surface); }
+.basis { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); }
+.srcs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--step--1); }
+.irr { font-size: var(--step--1); border-left: 3px solid var(--sev-moderate); padding-left: 8px; }
+.irr.avoid { border-left-color: var(--sev-high); }
+
+/* Lists */
+.list { display: grid; gap: 0; }
+.item { display: grid; grid-template-columns: 2.2rem 1fr; gap: 4px 10px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.item:first-child { border-top: 0; }
+.item .n { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.item .body { display: grid; gap: 4px; min-width: 0; }
+.item .title { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.item .name { font-weight: 700; overflow-wrap: anywhere; }
+.item p { margin: 0; font-size: var(--step--1); color: var(--muted); max-width: 64ch; }
+.item .trace { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+.empty { font-size: var(--step--1); color: var(--muted); margin: 0; }
+.groups { display: grid; gap: 10px; }
+.group { display: grid; gap: 2px; font-size: var(--step--1); }
+.group .gh { display: flex; gap: 8px; align-items: center; }
+.group .names { color: var(--muted); overflow-wrap: anywhere; }
+
+/* Evidence */
+.rules { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
+.rules li::marker { font-family: var(--font-mono); color: var(--accent); }
+.scale { display: grid; gap: 6px; }
+.scale div { display: grid; grid-template-columns: 9.5rem 1fr; gap: 10px; font-size: var(--step--1); align-items: baseline; }
+.sources { display: grid; gap: 12px; }
+.source { display: grid; gap: 2px; font-size: var(--step--1); }
+.source .cite { color: var(--muted); }
+.fine { font-size: var(--step--1); color: var(--muted); max-width: 66ch; margin: 0; }
+
+@media (max-width: 420px) {
+  .wrap { padding: 20px 16px 56px; }
+  .scale div { grid-template-columns: 1fr; gap: 2px; }
+  .card { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+.progress { height: 6px; border-radius: 999px; background: var(--rule); overflow: hidden; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.progress[hidden] { display: none; }
+.bm { display: inline-block; padding: 8px 14px; border-radius: 8px; border: 2px dashed var(--accent); color: var(--accent); font-weight: 700; text-decoration: none; cursor: grab; }
+details.howto { font-size: var(--step--1); }
+details.howto summary { cursor: pointer; font-weight: 700; }
+details.howto ol { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.fixes { font-size: var(--step--1); color: var(--muted); }
+.fixes b { color: var(--ink); font-weight: 700; }
+.unk { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.privacy { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="eyebrow">For seborrhoeic dermatitis · Malassezia-prone scalp</div>
+    <h1>Scalp Ingredient Checker</h1>
+    <p class="lede">Paste a product's ingredient list, snap the label, or bring it over from a shop's page. Each ingredient is checked against lab studies of <i>Malassezia</i>, the yeast behind seborrhoeic dermatitis, and against EU allergen rules. Label position matters, so the checker also finds where ingredients drop to 1% or less.</p>
+    <div class="privacy">Runs entirely in your browser · nothing is uploaded · no account</div>
+  </header>
+
+  <section class="card" aria-labelledby="in-h">
+    <h2 id="in-h">Product</h2>
+    <div class="tabs" role="tablist" aria-label="How to enter ingredients">
+      <button class="tab" role="tab" id="tab-paste" aria-controls="p-paste" aria-selected="true">Paste</button>
+      <button class="tab" role="tab" id="tab-photo" aria-controls="p-photo" aria-selected="false">Photo</button>
+      <button class="tab" role="tab" id="tab-page" aria-controls="p-page" aria-selected="false">Web page</button>
+    </div>
+
+    <div class="panel" id="p-paste" role="tabpanel" aria-labelledby="tab-paste">
+      <label class="lbl" for="inci">Ingredient list (INCI), as printed</label>
+      <textarea id="inci" spellcheck="false" placeholder="Aqua, Glycerin, Cetearyl Alcohol, Dimethicone, Parfum, …"></textarea>
+      <div class="chips" id="examples" aria-label="Load an example"></div>
+    </div>
+
+    <div class="panel" id="p-photo" role="tabpanel" aria-labelledby="tab-photo" hidden>
+      <label class="lbl" for="photo">Photo of the ingredients panel</label>
+      <input type="file" id="photo" accept="image/*">
+      <img id="preview" class="preview" alt="Selected label photo" hidden>
+      <p class="help">Crop to the ingredient text, keep it sharp and flat, and avoid glare. The text is read on your device and fixed against a dictionary of common ingredient names; check the result against the package before trusting it. The first read downloads the text-recognition engine (a few megabytes).</p>
+      <div class="row"><button class="btn" id="readPhoto" disabled>Read ingredients</button></div>
+      <div class="progress" id="ocrProgress" hidden><i></i></div>
+    </div>
+
+    <div class="panel" id="p-page" role="tabpanel" aria-labelledby="tab-page" hidden>
+      <label class="lbl" for="pagetext">Text copied from the product page</label>
+      <textarea id="pagetext" placeholder="On the shop's product page: select all, copy, and paste here."></textarea>
+      <div class="row"><button class="btn" id="readPage">Find ingredient list</button></div>
+      <p class="help">A website can't read another website by itself, so links can't be pasted here. Copy the page text instead, or install the one-tap bookmark below: on any product page it grabs the text and opens this checker with it.</p>
+      <div class="row"><a class="bm" id="bookmarklet" href="#">Scalp Check this page</a><button class="btn secondary" id="copyBm" type="button">Copy bookmark code</button><span class="status" id="bmStatus"></span></div>
+      <details class="howto">
+        <summary>How to install the bookmark</summary>
+        <ol>
+          <li><b>Computer:</b> drag the dashed button to your bookmarks bar. On a product page, click it.</li>
+          <li><b>iPhone (Safari):</b> tap Copy bookmark code. Bookmark any page, then edit that bookmark: rename it "Scalp Check" and paste the code as its address. On a product page, open Bookmarks and tap it.</li>
+          <li><b>Android (Chrome):</b> copy the code, bookmark any page, edit the bookmark and paste the code as its URL. On a product page, type "Scalp Check" in the address bar and tap the bookmark.</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="row" role="radiogroup" aria-label="Product type">
+      <span class="seg">
+        <input type="radio" name="ptype" id="pt-leave" value="leave" checked><label for="pt-leave">Leave-on</label>
+        <input type="radio" name="ptype" id="pt-rinse" value="rinse"><label for="pt-rinse">Rinse-off</label>
+      </span>
+      <span class="help" id="ptype-help">Styling cream, gel, serum, leave-in.</span>
+    </div>
+    <div class="row">
+      <button class="btn" id="check">Check ingredients</button>
+      <div class="busy" id="busy" aria-live="polite"><span class="dot"></span><span id="busyText">Working…</span></div>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <div class="fixes" id="fixes"></div>
+  </section>
+
+  <section class="card verdict" id="verdict" aria-live="polite"></section>
+
+  <section class="labelcard" aria-labelledby="lab-h">
+    <div class="labelhead">
+      <h2 id="lab-h">On the label</h2>
+      <span class="src" id="labelSrc"></span>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div class="legend" id="legend"></div>
+    <div class="inspector" id="inspector"></div>
+  </section>
+
+  <section class="card" aria-labelledby="drv-h">
+    <h2 id="drv-h">What drives the verdict</h2>
+    <div class="list" id="drivers"></div>
+  </section>
+
+  <section class="card" aria-labelledby="irr-h">
+    <h2 id="irr-h">Allergy and irritation</h2>
+    <p class="help">A separate question from yeast: these can inflame skin that is already reactive.</p>
+    <div class="list" id="irritants"></div>
+  </section>
+
+  <section class="card" aria-labelledby="rest-h">
+    <h2 id="rest-h">Everything else</h2>
+    <div class="groups" id="rest"></div>
+    <div class="row">
+      <button class="btn secondary" id="copy">Copy report</button>
+      <button class="btn secondary" id="share">Copy share link</button>
+      <span class="status" id="copyStatus"></span>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="how-h">
+    <h2 id="how-h">How it decides</h2>
+    <ol class="rules">
+      <li><b>Finds the 1% line.</b> EU and US labels list ingredients above 1% in descending order; those at 1% or less follow in any order. Phenoxyethanol, benzyl alcohol and potassium sorbate are legally capped at or below 1% in the EU, so everything after them is at most 1%. Fragrance usually is too but isn't capped, so a line drawn there is marked "likely".</li>
+      <li><b>Rates each ingredient for <i>Malassezia</i>.</b> Based on lab studies that grew <i>Malassezia</i> species on cosmetic ingredients. Results are weighted toward <i>M. globosa</i> and <i>M. restricta</i>, which dominate on flaky scalps, so growth by <i>M. furfur</i> alone counts as low.</li>
+      <li><b>Flags allergy and irritation separately.</b> EU-listed fragrance allergens, strong preservative sensitisers, formaldehyde releasers, drying alcohol and harsh surfactants.</li>
+      <li><b>Combines them into a verdict.</b> High: a high-risk ingredient above the 1% line. Moderate: a moderate one above the line, or a high one below it. Low: only weak flags. Minimal: none. Rinse-off products drop one step for shorter contact; that step is a judgement, not a study result.</li>
+    </ol>
+    <h3>Risk scale</h3>
+    <div class="scale" id="scale"></div>
+    <h3>How sure each rating is</h3>
+    <div class="scale" id="basisScale"></div>
+    <h3>Sources</h3>
+    <div class="sources" id="sources"></div>
+    <p class="fine">Limits: nearly all of this evidence comes from yeast grown on lab plates, mostly <i>M. furfur</i> and a few other species. No clinical trial has tested how styling products affect seborrhoeic dermatitis. People differ: in DeAngelis 2005, applied oleic acid caused flaking only in dandruff-prone people. Ingredients the database doesn't know are listed, not guessed. Formulas change, so check the current label. This is not medical advice; a dermatologist can patch-test you for allergies.</p>
+  </section>
+</main>
+
+<script>
+/* Scalp Ingredient Checker — rule engine.
+   Classifies INCI ingredient names by their potential to feed Malassezia
+   (seborrhoeic dermatitis) using in-vitro evidence, and flags contact
+   allergens/irritants separately. Pure functions; no DOM. */
+(function (root) {
+  "use strict";
+
+  var SOURCES = {
+    dobler2019: {
+      short: "Dobler et al. 2019",
+      full: "Dobler D, Schmidts T, Wildenhain S, Seewald I, Merzhäuser M, Runkel F. Impact of selected cosmetic ingredients on common microorganisms of healthy human skin. Cosmetics. 2019;6(3):45.",
+      url: "https://doi.org/10.3390/cosmetics6030045",
+      what: "Lab study: grew several Malassezia species (including M. furfur, M. globosa and M. sympodialis) on over 70 cosmetic ingredients. Growth on native oils and waxes, free fatty acids, esters and fatty alcohols with chains above 12 carbons; no growth on fatty alcohol ethers, branched alcohols, paraffin and silicones, polymers, PEGs, quaternary ammonium salts, hydroxy fatty acid esters, or chains below 12 carbons."
+    },
+    mayser1995: {
+      short: "Mayser et al. 1995",
+      full: "Mayser P, Führer D, Schmidt R, Gründer K. Hydrolysis of fatty acid esters by Malassezia furfur: different utilization depending on alcohol moiety. Acta Derm Venereol. 1995;75(2):105–109.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/7604636/",
+      what: "Lab study: ethyl and isopropyl esters are split fastest; unsaturated fatty acids stimulated growth more than saturated ones."
+    },
+    mayser1997: {
+      short: "Mayser et al. 1997",
+      full: "Mayser P, Haze P, Papavassilis C, Pickel M, Gruender K, Guého E. Differentiation of Malassezia species: selectivity of Cremophor EL, castor oil and ricinoleic acid for M. furfur. Br J Dermatol. 1997;137:208–213.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=Differentiation+of+Malassezia+species+selectivity+of+Cremophor+EL+castor+oil+ricinoleic+acid",
+      what: "Lab study: castor oil, ricinoleic acid and the castor-oil ethoxylate Cremophor EL are used selectively by M. furfur."
+    },
+    papavassilis1999: {
+      short: "Crit Care Med 1999",
+      full: "Medium-chain triglycerides inhibit growth of Malassezia: implications for prevention of systemic infection. Crit Care Med. 1999;27(9):1781–1786.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/10507598/",
+      what: "Lab study: medium-chain triglycerides and medium-chain free fatty acids were toxic to Malassezia."
+    },
+    deangelis2005: {
+      short: "DeAngelis et al. 2005",
+      full: "DeAngelis YM, Gemmer CM, Kaczvinsky JR, Kenneally DC, Schwartz JR, Dawson TL Jr. Three etiologic facets of dandruff and seborrheic dermatitis: Malassezia fungi, sebaceous lipids, and individual sensitivity. J Investig Dermatol Symp Proc. 2005;10(3):295–297.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/16382685/",
+      what: "Human study: Malassezia releases irritating free fatty acids from sebum; applying oleic acid alone caused dandruff-like flaking in dandruff-susceptible people but not in others."
+    },
+    dawson2007: {
+      short: "J Investig Dermatol Symp Proc 2007",
+      full: "Malassezia globosa and restricta: breakthrough understanding of the etiology and treatment of dandruff and seborrheic dermatitis through whole-genome analysis. J Investig Dermatol Symp Proc. 2007;12(2):15–19.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/18004291/",
+      what: "Review: M. globosa and M. restricta predominate on dandruff scalp. Used here to weight results by species."
+    },
+    guillot1996: {
+      short: "Guillot et al. 1996",
+      full: "Guillot J, Guého E, Lesourd M, Midgley G, Chévrier G, Dupont B. Identification of Malassezia species: a practical approach. J Mycol Méd. 1996;6:103–110.",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=Identification+of+Malassezia+species+a+practical+approach",
+      what: "Lab method: species are told apart by which Tweens (polysorbates 20/40/60/80) they can use as a lipid source."
+    },
+    eu1223: {
+      short: "EU Regulation 1223/2009",
+      full: "Regulation (EC) No 1223/2009 on cosmetic products: Article 19 (ingredients listed in descending order; those at 1% or less may follow in any order), Annex III (fragrance allergens that must be named), Annex V (preservative limits, e.g. phenoxyethanol max 1%).",
+      url: "https://eur-lex.europa.eu/eli/reg/2009/1223/oj",
+      what: "Labelling law used for the 1% line and the allergen flags."
+    }
+  };
+
+  var RISKS = {
+    high:     { rank: 5, label: "High",              desc: "Fed Malassezia strongly in lab tests" },
+    moderate: { rank: 4, label: "Moderate",          desc: "Supported some growth, or belongs to a group that did" },
+    low:      { rank: 3, label: "Low",               desc: "Used only by species uncommon on the scalp, or a weak, untested link" },
+    minimal:  { rank: 2, label: "No growth in tests", desc: "Its chemical group showed no Malassezia growth" },
+    neutral:  { rank: 1, label: "Not a fatty source", desc: "Not a fatty-acid lipid, so nothing for Malassezia to feed on" },
+    benefit:  { rank: 0, label: "Antifungal",        desc: "Established anti-Malassezia or anti-dandruff active" },
+    unknown:  { rank: -1, label: "Not recognised",   desc: "Not in the database yet" }
+  };
+
+  var BASIS = {
+    tested: "This ingredient was tested",
+    group: "Its chemical group was tested",
+    inferred: "Inferred from chemistry, not tested",
+    clinical: "Established clinical use",
+    ai: "Classified by Claude, not the database"
+  };
+
+  /* ---------- text helpers ---------- */
+  function cleanName(s) {
+    s = String(s);
+    var o = (s.match(/\(/g) || []).length, c = (s.match(/\)/g) || []).length;
+    if (o !== c) s = s.replace(/[()]/g, " ");
+    return s
+      .replace(/^['"‘’“”]+|['"‘’“”]+$/g, "")
+      .replace(/[‘’]/g, "'")
+      .replace(/[‐-―−]/g, "-")
+      .replace(/[*†‡°¹²³⁴⁵⁶⁷⁸⁹]+/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s\-•·.:,;]+/, "")
+      .replace(/[\s.;:,]+$/, "")
+      .trim();
+  }
+  function norm(s) { return cleanName(s).toLowerCase(); }
+
+  var LABEL_RE = /(?:^|\n|\.\s)[^\n]{0,40}?(?:\b(?:ingredients?|ingr[ée]dients|inci|composition|inhaltsstoffe|zusammensetzung|ingredienti|ingredientes)\b|съставки|състав)\s*[:：]/i;
+
+  function splitIngredients(raw) {
+    var t = String(raw || "").replace(/\r/g, "");
+    var m = t.match(LABEL_RE);
+    if (m) t = t.slice(m.index + m[0].length);
+    t = t.replace(/\s*\(\s*and\s*\)\s*/gi, ", ");
+    t = t.replace(/\[\s*\+\/-\s*\]|\(\s*\+\/-\s*\)|\+\/-|\bmay contain\b\s*[:：]?/gi, ", ");
+    var hasCommas = t.indexOf(",") !== -1;
+    if (hasCommas) t = t.replace(/\n+/g, " ");
+    // brackets only count when they close within 60 chars before another opens (OCR drops them)
+    var ignore = {}, stack = [];
+    for (var q = 0; q < t.length; q++) {
+      var ch = t[q];
+      if (ch === "(" || ch === "[") {
+        var ok = false;
+        for (var r = q + 1; r < t.length && r - q <= 60; r++) { if (t[r] === "(" || t[r] === "[") break; if (t[r] === ")" || t[r] === "]") { ok = true; break; } }
+        if (ok) stack.push(q); else ignore[q] = 1;
+      } else if (ch === ")" || ch === "]") { if (stack.length) stack.pop(); else ignore[q] = 1; }
+    }
+    var out = [], depth = 0, cur = "", openAt = -1;
+    for (var i = 0; i < t.length; i++) {
+      var c = t[i], next = t[i + 1] || "";
+      if (ignore[i]) { cur += " "; continue; }
+      if (c === "(" || c === "[") { if (depth === 0) openAt = i; depth++; }
+      else if ((c === ")" || c === "]") && depth > 0) depth--;
+      if (c === ";") depth = 0;
+      // an unclosed bracket (common in OCR) must not swallow the rest of the list
+      if (depth > 0 && (c === "," || c === ";" || c === "\n") && i - openAt > 30) depth = 0;
+      var sep = depth === 0 && (c === "\n" || c === ";" || c === "•" || c === "·" || c === "|" || (c === "," && !/\d/.test(next)));
+      if (sep) { out.push(cur); cur = ""; } else cur += c;
+    }
+    out.push(cur);
+    var seen = {}, res = [];
+    out.forEach(function (s) {
+      var name = cleanName(s);
+      if (!name || name.length < 2) return;
+      if (/^(and|or|ingredients?|inci)$/i.test(name)) return;
+      var key = name.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = 1;
+      res.push(name);
+    });
+    return res;
+  }
+
+  /* ---------- Malassezia rules ---------- */
+  function R(re, risk, basis, cat, note, src, testedRe) {
+    return { re: re, risk: risk, basis: basis, cat: cat, note: note, src: src || [], t: testedRe || null };
+  }
+
+  var RULES_A = [
+    // Antifungal / anti-dandruff actives
+    R(/\bketoconazole\b/, "benefit", "clinical", "Antifungal active", "Azole antifungal; a standard treatment for scalp seborrhoeic dermatitis."),
+    R(/\bciclopirox/, "benefit", "clinical", "Antifungal active", "Hydroxypyridone antifungal used in medicated shampoos for seborrhoeic dermatitis."),
+    R(/\bpiroctone olamine\b/, "benefit", "clinical", "Antifungal active", "Anti-dandruff antifungal."),
+    R(/\b(zinc pyrithione|pyrithione zinc)\b/, "benefit", "clinical", "Antifungal active", "Anti-dandruff antifungal; lowering Malassezia lowers the irritating free fatty acids it releases.", ["deangelis2005"]),
+    R(/\bselenium (di)?sulfide\b/, "benefit", "clinical", "Antifungal active", "Anti-dandruff active."),
+    R(/\bclimbazole\b/, "benefit", "clinical", "Antifungal active", "Azole antifungal used in anti-dandruff shampoos."),
+    R(/\b(bifonazole|miconazole|clotrimazole|econazole|sertaconazole)\b/, "benefit", "clinical", "Antifungal active", "Azole antifungal."),
+    R(/\bsalicylic acid\b/, "neutral", "clinical", "Keratolytic", "Loosens scale; common in anti-dandruff products. Not a food source for Malassezia."),
+
+    // Medium-chain (C8–C10)
+    R(/caprylic\/capric (tri)?glyceride|capric\/caprylic|medium[- ]chain triglyceride|\btricaprylin\b|\btriheptanoin\b/, "minimal", "tested", "Medium-chain triglyceride", "C8–C10 triglyceride. No growth in Dobler 2019, and medium-chain triglycerides inhibited Malassezia in a separate lab study.", ["dobler2019", "papavassilis1999"]),
+    R(/\b(caprylic|capric|undecylenic|heptanoic|nonanoic) acid\b/, "minimal", "tested", "Medium-chain fatty acid", "Chain shorter than 12 carbons: no growth in Dobler 2019; free medium-chain fatty acids suppressed Malassezia in vitro.", ["dobler2019", "papavassilis1999"], /capric acid/),
+
+    // Castor family (M. furfur only)
+    R(/\b(peg|polyoxyl)[- ]?\d+ (hydrogenated )?castor oil\b|macrogol.*hydroxystear|cremophor/, "low", "tested", "Ethoxylated castor oil", "Solubiliser. Only M. furfur grew on PEG-40 hydrogenated castor oil (Dobler 2019), and castor-oil ethoxylates are used selectively by M. furfur (Mayser 1997). M. furfur is not one of the main scalp species (M. globosa, M. restricta).", ["dobler2019", "mayser1997", "dawson2007"]),
+    R(/hydrogenated castor oil|ricinoleate|ricinoleic acid|trihydroxystearin/, "low", "group", "Castor-oil derivative", "Castor-derived; in lab tests only M. furfur used castor oil and ricinoleic acid.", ["dobler2019", "mayser1997"]),
+    R(/\bricinus communis\b|\bcastor (seed )?oil\b/, "low", "tested", "Castor oil", "Only M. furfur grew on castor oil (Dobler 2019; Mayser 1997); it is not the main scalp species.", ["dobler2019", "mayser1997", "dawson2007"]),
+
+    // Silicones
+    R(/siloxane|methicone|dimethiconol|silicone|silsesquioxane|polysilicone|siloxysilicate|silanol/, "minimal", "group", "Silicone", "Dobler 2019: no Malassezia growth on dimethicone or cyclopentasiloxane.", ["dobler2019"]),
+
+    // Hydrocarbons
+    R(/paraffinum liquidum|\bparaffin\b|mineral oil|petrolatum|vaseline|\bsqualane\b|hemisqualane|isododecane|isohexadecane|isoeicosane|\bc\d+-\d+ (iso)?alkanes?\b|isoparaffin|hydrogenated poly(isobutene|decene)|polyisobutene|polybutene|microcrystalline wax|cera microcristallina|ozokerite|ceresin|\bpolyethylene\b|\bundecane\b|\btridecane\b|\bdodecane\b|coconut alkanes|\bsqualene\b/, "minimal", "tested", "Hydrocarbon", "Paraffin-type hydrocarbon. Dobler 2019: no growth, apart from slow M. furfur growth on paraffin and squalene.", ["dobler2019"], /paraffin|mineral oil|squalene/),
+
+    // Polymers
+    R(/copolymer|crosspolymer|\bpolymer\b|carbomer|acrylates|polyacrylate|polyacrylamide|polyquaternium|\bpvp\b|polyvinylpyrrolidone|\bvp\/|xanthan|cellulose|carrageenan|\bguar\b|gellan|sclerotium gum|biosaccharide gum|\bgum\b|starch|dextrin|polyimide|polyurethane|chitosan|pullulan|alginate|\bagar\b|pectin|poloxamer|polyvinyl alcohol/, "minimal", "group", "Polymer", "Film former or thickener. Dobler 2019: no growth on polymers (carbomer, xanthan, cellulose derivatives, acrylate copolymers).", ["dobler2019"]),
+
+    // Simple salts
+    R(/^(sodium|potassium|magnesium|calcium|ammonium|zinc) (chloride|sulfate|phosphate|citrate|lactate|carbonate|bicarbonate|gluconate|hydroxide|nitrate)$/, "neutral", "inferred", "Salt", "Formulation helper; not a lipid."),
+
+    // Sulfate / sulfonate surfactants
+    R(/\bsulfate\b|sulfonate|sulfosuccinate|sulfoacetate/, "neutral", "inferred", "Sulfate/sulfonate surfactant", "Cleansing agent with a sulfur-based head group rather than a fatty-acid ester; not tested."),
+
+    // Fatty alcohol ethers and glucosides
+    R(/\b(ceteth|steareth|laureth|oleth|trideceth|ceteareth|isosteareth|beheneth|myreth|pareth|deceth|isoceteth|coceth|glycereth|sorbeth)-\d+|\bc\d+-\d+ pareth/, "minimal", "tested", "Fatty alcohol ether", "Ether-linked emulsifier. Dobler 2019: no growth on fatty alcohol ethers (ceteth-20, oleth-20, laureth-20, steareth-20).", ["dobler2019"], /\b(ceteth|oleth|laureth|steareth)-20\b/),
+    R(/glucoside\b/, "minimal", "group", "Alkyl glucoside", "Sugar-based surfactant or emulsifier. Dobler 2019: no growth on cetearyl glucoside.", ["dobler2019"]),
+
+    // Plain PEG / PPG
+    R(/^(peg|ppg)-\d+$|polyethylene glycol|^macrogol \d+|\b(peg|ppg)-\d+ (propylheptyl|methyl|butyl) ether|^peg-\d+\/ppg-\d+/, "minimal", "tested", "Polyethylene glycol", "Dobler 2019: no growth on PEGs (PEG 300, PEG 550 tested).", ["dobler2019"], /^peg-?(300|550)$|polyethylene glycol (300|550)/),
+
+    // Quats
+    R(/(dipalmitoyl|distearoyl|dicocoyl|dioleoyl|dibehenoyl|behenoyl|stearoyl|palmitoyl|cocoyl).*(monium|methosulfate)/, "low", "inferred", "Ester-quat conditioner", "Cationic conditioner with ester-linked fatty acids that lipases could release; not tested."),
+    R(/trimonium|dimonium|ethylmonium|alkonium|quaternium-\d+|ammonium methosulfate/, "minimal", "group", "Quaternary ammonium conditioner", "Dobler 2019: no growth on quaternary ammonium salts (palmitamidopropyltrimonium chloride tested).", ["dobler2019"]),
+    R(/amidopropyl dimethylamine/, "low", "inferred", "Amidoamine conditioner", "Conditioner built from a C18–C22 fatty acid through an amide bond; not tested."),
+
+    // Branched (Guerbet) alcohols
+    R(/\b(octyldodecanol|hexyldecanol|decyltetradecanol|butyloctanol|octyldecanol)\b/, "minimal", "tested", "Branched fatty alcohol", "Dobler 2019: no growth on octyldodecanol, a branched alcohol.", ["dobler2019"], /octyldodecanol/),
+
+    // Primary fatty alcohols
+    R(/\blauryl alcohol\b/, "low", "inferred", "Fatty alcohol (C12)", "C12 sits on the boundary: Dobler 2019 found growth above 12 carbons and none below.", ["dobler2019"]),
+    R(/\b(cetearyl|cetyl|stearyl|behenyl|myristyl|arachidyl|oleyl|isostearyl|brassica|c\d+-\d+|c\d+-c\d+) alcohols?\b/, "moderate", "tested", "Fatty alcohol", "Primary C14–C22 fatty alcohol. Dobler 2019: growth on cetearyl alcohol, mainly by M. furfur.", ["dobler2019"], /cetearyl alcohol/),
+
+    // Free fatty acids
+    R(/\b(oleic|linoleic|linolenic|palmitoleic|arachidonic|erucic) acid\b/, "high", "tested", "Unsaturated fatty acid", "Free unsaturated fatty acid. All species grew on free fatty acids above C12 (Dobler 2019); unsaturated ones stimulated growth most (Mayser 1995); oleic acid alone caused dandruff-like flaking in susceptible people (DeAngelis 2005).", ["dobler2019", "mayser1995", "deangelis2005"], /(^|[^a-z])oleic acid/),
+    R(/\b(myristic|palmitic|stearic|behenic|arachidic) acid\b/, "high", "tested", "Saturated fatty acid", "Free C14–C22 fatty acid. Dobler 2019: all Malassezia species grew on free fatty acids above C12 (palmitic and stearic acid tested).", ["dobler2019"], /palmitic acid|stearic acid/),
+    R(/\blauric acid\b|coconut acid|palm kernel acid/, "moderate", "group", "Fatty acid (C12 / coconut)", "Lauric acid sits on the C12 boundary; coconut fatty acids also contain C14–C18 chains.", ["dobler2019"]),
+    R(/\bisostearic acid\b/, "moderate", "inferred", "Branched fatty acid", "Branched C18 fatty acid; not tested."),
+    R(/hydroxystearic acid/, "low", "inferred", "Hydroxy fatty acid", "Esters of hydroxy fatty acids showed no growth in Dobler 2019; the free acid was not tested.", ["dobler2019"]),
+
+    // Polysorbates and sorbitan "Span"
+    R(/polysorbate[- ]?\d+|\btween[- ]?\d+/, "low", "group", "Polysorbate (emulsifier)", "Tweens are classic lipid sources for M. furfur, M. sympodialis and M. slooffiae in species-identification tests, but M. globosa and M. restricta, the main scalp species, typically don't use them.", ["guillot1996", "dawson2007"]),
+    R(/\bspan[- ]?\d+\b/, "moderate", "group", "Sorbitan ester (emulsifier)", "Sorbitan fatty-acid ester; Span 80 (sorbitan oleate) was in Dobler 2019's ester group.", ["dobler2019"]),
+
+    // Waxes and lanolin
+    R(/\bcera alba\b|beeswax|\bcera flava\b|copernicia cerifera|carnauba/, "high", "tested", "Natural wax", "Dobler 2019: beeswax and carnauba wax supported Malassezia growth; native oils and waxes gave the strongest growth overall.", ["dobler2019"]),
+    R(/lanolin|adeps lanae|cera lanae/, "moderate", "group", "Lanolin", "Wool wax (esters of long fatty acids and alcohols). Tested in Dobler 2019's ester group; result not reported individually.", ["dobler2019"]),
+    R(/candelilla|euphorbia cerifera|rice bran wax|oryza sativa (bran )?(cera|wax)|sunflower seed wax|helianthus annuus seed (cera|wax)|jojoba esters|hydrogenated jojoba|myrica|bayberry|synthetic beeswax|\bcera\b|\bwax\b/, "moderate", "group", "Natural or ester wax", "Wax esters of long fatty acids and alcohols, the same group as beeswax and carnauba, which supported growth (Dobler 2019).", ["dobler2019"])
+  ];
+
+  /* Fragrance, solvents, preservatives, UV filters: specific small molecules
+     checked before the oil/ester logic. */
+  var ALLERGENS_26 = ["amyl cinnamal", "benzyl alcohol", "cinnamyl alcohol", "citral", "eugenol", "hydroxycitronellal", "isoeugenol", "amylcinnamyl alcohol", "benzyl salicylate", "cinnamal", "coumarin", "geraniol", "hydroxyisohexyl 3-cyclohexene carboxaldehyde", "anise alcohol", "benzyl cinnamate", "farnesol", "butylphenyl methylpropional", "linalool", "benzyl benzoate", "citronellol", "hexyl cinnamal", "limonene", "methyl 2-octynoate", "alpha-isomethyl ionone", "evernia prunastri", "evernia furfuracea"];
+
+  function isAllergen(n) {
+    for (var i = 0; i < ALLERGENS_26.length; i++) {
+      var a = ALLERGENS_26[i];
+      if (n === a || n.indexOf(a + " ") === 0 || n.indexOf(a + " (") === 0 || (a.indexOf("evernia") === 0 && n.indexOf(a) !== -1)) return true;
+    }
+    return false;
+  }
+
+  var RULES_B = [
+    R(/^(parfum|fragrance|aroma|perfume)\b/, "neutral", "inferred", "Fragrance", "Fragrance mix; not a fatty-acid source in meaningful amounts."),
+    R(/^(alcohol|alcohol denat|ethanol|sd alcohol|isopropyl alcohol|ethyl alcohol|denatured alcohol)\b/, "neutral", "inferred", "Alcohol (solvent)", "Evaporates; not a lipid."),
+    R(/\b(butane|propane|isobutane|dimethyl ether|carbon dioxide|hydrofluorocarbon)\b|^nitrogen$/, "neutral", "inferred", "Propellant", "Gas propellant; not a lipid."),
+    R(/phenoxyethanol|^sodium benzoate$|^potassium sorbate$|^benzoic acid$|^sorbic acid$|dehydroacetic acid|sodium dehydroacetate|chlorphenesin|ethylhexylglycerin|caprylyl glycol|hexanediol|paraben|isothiazolinone|dmdm hydantoin|imidazolidinyl urea|diazolidinyl urea|hydroxymethylglycinate|phenethyl alcohol|phenylpropanol|levulinic acid|sodium levulinate|anisic acid|sodium anisate|iodopropynyl|benzethonium|^potassium benzoate$|bronopol|2-bromo-2-nitropropane|quaternium-15/, "neutral", "inferred", "Preservative", "Not a fatty-acid lipid."),
+    R(/benzophenone|methoxycinnamate|octocrylene|butyl methoxydibenzoylmethane|avobenzone|ethylhexyl salicylate|homosalate|octinoxate|bis-ethylhexyloxyphenol|diethylamino hydroxybenzoyl/, "neutral", "inferred", "UV filter", "Protects hair colour; not a fatty-acid source."),
+    R(/methyl benzoate|terpineol|vanillin|ionone|cedrene|tetramethyl acetyloctahydronaphthalenes|hexamethylindanopyran|pinene|camphor|linalyl acetate|geranyl acetate|rose ketones|ambrox|galaxolide|isoe super|dihydromyrcenol|eucalyptol|\bcineole\b|menthyl lactate/, "neutral", "inferred", "Fragrance component", "Small fragrance molecule; not a fatty-acid source."),
+    R(/^tocopher/, "neutral", "inferred", "Vitamin E", "Antioxidant; not a fatty-acid source."),
+    R(/lactamide|acetamide mea/, "neutral", "inferred", "Humectant / conditioning", "Short-chain amide humectant; not a lipid."),
+    R(/citric acid|sodium hydroxide|potassium hydroxide|aminomethyl propanol|triethanolamine|tromethamine|^arginine$|phosphoric acid|disodium phosphate|sodium phosphate|calcium chloride|edta|edetate|sodium phytate|phytic acid|glutamate diacetate|pentetate|etidronic|tetrahydroxypropyl ethylenediamine|gluconolactone|ammonium hydroxide|sodium metabisulfite|^sodium chloride$|^ammonium chloride$/, "neutral", "inferred", "pH adjuster / chelator", "Formulation helper; not a lipid.")
+  ];
+
+  /* ---------- essential oils vs. plant (triglyceride) oils ---------- */
+  var ESSENTIAL_GENERA = /\b(citrus|lavandula|melaleuca|mentha|rosmarinus|eucalyptus|pogostemon|cymbopogon|pelargonium|cananga|salvia|origanum|thymus|juniperus|cedrus|santalum|boswellia|abies|pinus|eugenia|syzygium|cinnamomum|litsea|vetiveria|chrysopogon|aniba|cupressus|picea|ocimum|illicium|foeniculum|elettaria|zingiber|myrtus|laurus|chamomilla|matricaria|anthemis|ormenis|helichrysum|jasminum|michelia|cistus|styrax|myroxylon|copaifera|amyris|lippia|hyssopus|ravensara|tagetes|artemisia|achillea|aloysia|leptospermum|pimenta|piper|tanacetum)\b/;
+  var ESSENTIAL_WORDS = /\b(peel|leaf|bark|needle|herb|root|wood|twig|resin|rind|zest)\s+oil\b|essential oil|\btea tree\b|peppermint|spearmint|lavender oil|rosemary oil|eucalyptus oil|patchouli|ylang|lemongrass|bergamot|clove oil|cinnamon oil|orange oil|lemon oil|lime oil|grapefruit oil|geranium oil|rosa (damascena|centifolia) flower oil/;
+  var FIXED_HINT = /\b(seed|kernel|fruit|nut|germ|bran|pulp|fixed)\s+oil\b|\bbutter\b/;
+
+  function isEssentialOil(n) {
+    if (!/\boil\b/.test(n)) return false;
+    if (FIXED_HINT.test(n)) return false;
+    return ESSENTIAL_WORDS.test(n) || ESSENTIAL_GENERA.test(n);
+  }
+
+  var OILS = [
+    { re: /olea europaea|\bolive\b/, name: "Olive oil", fa: "oleic", tested: true, strong: true },
+    { re: /persea (gratissima|americana)|avocado/, name: "Avocado oil", fa: "oleic", tested: true, strong: true },
+    { re: /argania spinosa|\bargan\b/, name: "Argan oil", fa: "oleic" },
+    { re: /prunus amygdalus dulcis|almond/, name: "Sweet almond oil", fa: "oleic", tested: true },
+    { re: /prunus armeniaca|apricot/, name: "Apricot kernel oil", fa: "oleic" },
+    { re: /macadamia/, name: "Macadamia oil", fa: "oleic" },
+    { re: /corylus|hazelnut/, name: "Hazelnut oil", fa: "oleic" },
+    { re: /camellia/, name: "Camellia oil", fa: "oleic" },
+    { re: /sclerocarya birrea|marula/, name: "Marula oil", fa: "oleic" },
+    { re: /moringa/, name: "Moringa oil", fa: "oleic" },
+    { re: /brassica (campestris|napus)|rapeseed|canola/, name: "Rapeseed oil", fa: "oleic", tested: true },
+    { re: /arachis hypogaea|peanut/, name: "Peanut oil", fa: "oleic", tested: true },
+    { re: /helianthus annuus hybrid|high oleic/, name: "High-oleic sunflower oil", fa: "oleic" },
+    { re: /vitis vinifera|grape ?seed/, name: "Grape seed oil", fa: "linoleic", tested: true },
+    { re: /oenothera biennis|evening primrose/, name: "Evening primrose oil", fa: "linoleic", tested: true },
+    { re: /triticum vulgare|wheat germ/, name: "Wheat germ oil", fa: "linoleic", tested: true },
+    { re: /glycine soja|soybean|\bsoy\b/, name: "Soybean oil", fa: "linoleic", tested: true },
+    { re: /sesamum indicum|sesame/, name: "Sesame oil", fa: "mixed", tested: true },
+    { re: /linum usitatissimum|linseed|flax/, name: "Linseed oil", fa: "linolenic", tested: true },
+    { re: /simmondsia chinensis|jojoba/, name: "Jojoba oil (a liquid wax)", fa: "wax", tested: true },
+    { re: /helianthus annuus|sunflower/, name: "Sunflower oil", fa: "linoleic" },
+    { re: /zea mays|\bcorn\b/, name: "Corn oil", fa: "linoleic" },
+    { re: /carthamus|safflower/, name: "Safflower oil", fa: "linoleic" },
+    { re: /cannabis sativa|hemp/, name: "Hemp seed oil", fa: "linoleic" },
+    { re: /rosa (canina|moschata|rubiginosa)|rosehip/, name: "Rosehip oil", fa: "linoleic" },
+    { re: /nigella sativa|black cumin/, name: "Black cumin oil", fa: "linoleic" },
+    { re: /borago|borage/, name: "Borage oil", fa: "linoleic" },
+    { re: /salvia hispanica|chia/, name: "Chia seed oil", fa: "linolenic" },
+    { re: /passiflora/, name: "Passion fruit seed oil", fa: "linoleic" },
+    { re: /oryza sativa|rice bran/, name: "Rice bran oil", fa: "mixed" },
+    { re: /punica granatum|pomegranate/, name: "Pomegranate seed oil", fa: "mixed" },
+    { re: /palm kernel|elaeis guineensis kernel/, name: "Palm kernel oil", fa: "lauric", lauric: true },
+    { re: /cocos nucifera|coconut/, name: "Coconut oil", fa: "lauric", lauric: true },
+    { re: /orbignya|babassu/, name: "Babassu oil", fa: "lauric", lauric: true },
+    { re: /elaeis guineensis|\bpalm\b/, name: "Palm oil", fa: "mixed" },
+    { re: /limnanthes alba|meadowfoam/, name: "Meadowfoam seed oil", fa: "mixed" },
+    { re: /crambe abyssinica/, name: "Crambe seed oil", fa: "mixed" }
+  ];
+
+  function classifyOil(n) {
+    if (!/\boil\b/.test(n)) return null;
+    var hit = null;
+    for (var i = 0; i < OILS.length; i++) if (OILS[i].re.test(n)) { hit = OILS[i]; break; }
+    if (hit && hit.lauric) {
+      return { risk: "moderate", basis: "inferred", cat: "Plant oil (lauric-rich)", src: ["dobler2019"],
+        note: hit.name + ": about half lauric acid (C12, the boundary of what Malassezia uses) plus myristic, palmitic and oleic acids (C14–C18) that it can use. Not tested in Dobler 2019." };
+    }
+    var note = (hit ? hit.name + ". " : "Plant oil (triglycerides). ") +
+      "Dobler 2019: native oils and waxes produced the strongest Malassezia growth overall" +
+      (hit && hit.strong ? "; this oil supported strong growth across all strains tested." : (hit && hit.tested ? "; this oil was among those tested." : "."));
+    var src = ["dobler2019"];
+    if (hit && hit.fa === "oleic") { note += " Rich in oleic acid, which Malassezia leaves behind on the scalp; applied oleic acid alone caused dandruff-like flaking in susceptible people (DeAngelis 2005)."; src.push("deangelis2005"); }
+    if (hit && (hit.fa === "linoleic" || hit.fa === "linolenic")) { note += " Rich in unsaturated " + hit.fa + " acid; unsaturated fatty acids stimulated growth most (Mayser 1995)."; src.push("mayser1995"); }
+    return { risk: "high", basis: hit && hit.tested ? "tested" : "group", cat: "Plant oil", note: note, src: src };
+  }
+
+  /* ---------- ester / fatty-acid salt parser ---------- */
+  var ACIDS = [
+    ["polyricinoleate", 18, "hydroxy"], ["hydroxystearate", 18, "hydroxy"], ["ricinoleate", 18, "hydroxy"],
+    ["methoxycinnamate", 9, "aromatic"], ["isostearate", 18, "branched"], ["sunflowerseedate", 18, "unsat"],
+    ["dilinoleate", 18, "unsat"], ["linoleate", 18, "unsat"], ["linolenate", 18, "unsat"], ["olivate", 18, "unsat"],
+    ["avocadate", 18, "unsat"], ["oleate", 18, "unsat"], ["erucate", 22, "unsat"], ["behenate", 22], ["arachidate", 20],
+    ["stearate", 18], ["tallowate", 17], ["palmitate", 16], ["palmate", 16], ["myristate", 14],
+    ["laurate", 12], ["cocoate", 12, "mix"], ["babassuate", 12, "mix"], ["palm kernelate", 12, "mix"],
+    ["undecylenate", 11], ["neodecanoate", 10], ["caprate", 10], ["sebacate", 10], ["isononanoate", 9], ["nonanoate", 9],
+    ["ethylhexanoate", 8], ["caprylate", 8], ["heptanoate", 7], ["benzoate", 7, "aromatic"], ["salicylate", 7, "aromatic"],
+    ["cinnamate", 9, "aromatic"], ["adipate", 6], ["citrate", 6], ["neopentanoate", 5], ["butyrate", 4], ["succinate", 4],
+    ["malate", 4], ["tartrate", 4], ["lactate", 3], ["propionate", 3], ["acetate", 2], ["carbonate", 1]
+  ];
+  var ACID_RES = ACIDS.map(function (a) {
+    return { re: new RegExp("(?:^|[^a-z])(?:di|tri|tetra|sesqui|poly)?" + a[0] + "\\b"), chain: a[1], kind: a[2] || "" , stem: a[0]};
+  });
+  var HEAD_SALT = /^(sodium|potassium|zinc|magnesium|calcium|aluminum|aluminium|lithium|ammonium|tea|triethanolamine)\b/;
+  var HEAD_POLYOL = /\b(glyceryl|polyglyceryl(-\d+)?|diglyceryl|triglyceryl|sorbitan|sucrose|methyl glucose|peg-\d+|ppg-\d+|propylene glycol|pentaerythrityl|trimethylolpropane|neopentyl glycol|glycol|xylityl|isosorbide|inulin|dextrin|ascorbyl|retinyl|tocopheryl|cholesteryl|phytosteryl|pg)\b/;
+  var HEAD_SHORT = /\b(methyl|ethyl|isopropyl|propyl|butyl|isobutyl)\b/;
+  var HEAD_LONG = /\b(cetearyl|cetyl|stearyl|isostearyl|behenyl|myristyl|lauryl|oleyl|arachidyl|octyldodecyl|hexyldecyl|decyltetradecyl|isocetyl|coco|isotridecyl|tridecyl|c1[2-9]-\d+ alkyl|c\d+-\d+ alkyl)\b/;
+
+  function classifyEster(n) {
+    var best = null;
+    for (var i = 0; i < ACID_RES.length; i++) {
+      var a = ACID_RES[i];
+      if (a.re.test(n)) {
+        var score = a.chain + (a.kind === "unsat" ? 0.5 : 0);
+        if (!best || score > best.score) best = { chain: a.chain, kind: a.kind, stem: a.stem, score: score };
+      }
+    }
+    if (!best) return null;
+    var longAcid = best.chain >= 14;
+
+    if (HEAD_SALT.test(n)) {
+      if (best.chain < 12) return null;
+      return { risk: "moderate", basis: "inferred", cat: "Fatty-acid salt (soap)", src: ["dobler2019"],
+        note: "Salt of a C12–C22 fatty acid that can release the free fatty acid; free fatty acids above C12 supported growth in Dobler 2019. The salt itself was not tested." };
+    }
+    if (best.kind === "hydroxy") {
+      return { risk: "low", basis: "group", cat: "Hydroxy fatty-acid ester", src: ["dobler2019", "mayser1997"],
+        note: "Ester of a hydroxy fatty acid (castor-type). Dobler 2019: no growth on hydroxy fatty acid esters; castor derivatives were used only by M. furfur." };
+    }
+    var polyol = HEAD_POLYOL.test(n);
+    var shortAlc = !polyol && HEAD_SHORT.test(n);
+    var longAlc = HEAD_LONG.test(n);
+    var unsatNote = best.kind === "unsat" ? " Unsaturated (oleic-type) chains stimulated growth most (Mayser 1995)." : "";
+
+    if (longAcid || best.kind === "unsat" || best.kind === "branched") {
+      if (shortAlc) {
+        return { risk: "high", basis: "tested", cat: "Fatty-acid ester (emollient)", src: ["dobler2019", "mayser1995"],
+          note: "Short-alcohol ester of a C14–C22 fatty acid. Dobler 2019: strong growth on isopropyl palmitate, which all species split; ethyl and isopropyl esters are hydrolysed fastest (Mayser 1995)." + unsatNote };
+      }
+      if (polyol) {
+        return { risk: "moderate", basis: "group", cat: "Fatty-acid ester (emulsifier)", src: ["dobler2019", "mayser1995"],
+          note: "Polyol ester of a C14–C22 fatty acid. Esters with chains above C12 supported growth in Dobler 2019; this emulsifier group (glyceryl stearate, sorbitan oleate, sucrose stearate, PEG-40 stearate) was tested but results were mostly not reported one by one." + unsatNote };
+      }
+      return { risk: "moderate", basis: "group", cat: "Fatty-acid ester (wax-type)", src: ["dobler2019", "mayser1995"],
+        note: "Ester of a C14–C22 fatty acid with a longer alcohol. Esters with chains above C12 supported growth (Dobler 2019); long-alcohol esters such as decyl oleate are split more slowly (Mayser 1995)." + unsatNote };
+    }
+    if (best.chain === 12) {
+      if (shortAlc) return { risk: "moderate", basis: "group", cat: "Fatty-acid ester (C12)", src: ["dobler2019", "mayser1995"],
+        note: "Short-alcohol ester of lauric or coconut fatty acids; C12 is the boundary in Dobler 2019 (growth above 12 carbons, none below), and short-alcohol esters are split fastest (Mayser 1995)." };
+      return { risk: "low", basis: "group", cat: "Fatty-acid ester (C12)", src: ["dobler2019"],
+        note: "Ester of lauric or coconut fatty acids; C12 is the boundary in Dobler 2019 (growth above 12 carbons, none below)." };
+    }
+    if (longAlc) {
+      return { risk: "low", basis: "group", cat: "Ester with a fatty alcohol part", src: ["dobler2019"],
+        note: "The acid part is short (under C12), but splitting can release a C12–C18 fatty alcohol; Dobler 2019 detected fatty alcohols released from esters." };
+    }
+    return { risk: "minimal", basis: "group", cat: "Short-chain ester", src: ["dobler2019"],
+      note: "Ester of short (under C12) chains. Dobler 2019: no growth on fatty acids or esters shorter than 12 carbons." };
+  }
+
+  var RULES_C = [
+    R(/\bbutter\b/, "high", "group", "Plant butter", "Triglycerides rich in stearic and oleic acid. Dobler 2019: native oils, waxes and shea butter gave the strongest growth.", ["dobler2019"]),
+    R(/triglycerides?\b|\bglycerides\b|triolein|tristearin|tripalmitin/, "moderate", "group", "Triglyceride", "Long-chain triglycerides are split by Malassezia lipases into fatty acids it can use.", ["dobler2019", "deangelis2005"])
+  ];
+
+  var RULES_D = [
+    R(/lecithin|phosphatidyl|phospholipid/, "low", "inferred", "Phospholipid", "Contains ester-linked C16–C18 fatty acids; usually a minor ingredient; not tested."),
+    R(/\bceramide|sphingo/, "low", "inferred", "Ceramide", "Amide-linked fatty chains; not tested."),
+    R(/(lauroyl|cocoyl|myristoyl|palmitoyl|stearoyl|oleoyl|capryloyl|olivoyl|behenoyl)\s+(isethionate|sarcosinate|glutamate|taurate|methyl taurate|glycinate|lactylate|alaninate|hydrolyzed)|methyl cocoyl taurate/, "low", "inferred", "Acyl surfactant / emulsifier", "Built from C12–C18 fatty acids; not tested. In rinse-off cleansers, contact is brief."),
+    R(/betaine\b.+|.+\bbetaine\b|sultaine|amphoacetate|amphodiacetate|amphopropionate/, "low", "inferred", "Amphoteric surfactant", "Mild cleansing agent with a coconut or lauric fatty chain; not tested."),
+    R(/\b(cocamide|lauramide|stearamide|oleamide|behenamide|myristamide|palmitamide|linoleamide|capramide)\b|amide (mea|dea|mipa)\b|acid amide\b/, "low", "inferred", "Fatty amide", "Amide-linked fatty chain; not tested.")
+  ];
+
+  var RULES_E = [
+    R(/^(aqua|water|eau|purified water|deionized water)\b/, "neutral", "inferred", "Water", "Solvent; not a lipid."),
+    R(/\b(glycerin|glycerol|propanediol|butylene glycol|pentylene glycol|hexylene glycol|dipropylene glycol|propylene glycol|sorbitol|xylitol|erythritol|urea|sodium pca|panthenol|panthenyl|pantolactone|niacinamide|allantoin|trehalose|inositol|glucose|sucrose|fructose|honey|hyaluron|sodium lactate|lactic acid|aloe barbadensis|aloe vera|beta-glucan|polyglycerin|diglycerin)\b|^betaine$|^mel$/, "neutral", "inferred", "Humectant / conditioning", "Not a fatty-acid lipid."),
+    R(/\bextract\b|\bextrait\b/, "neutral", "inferred", "Plant extract", "Usually a water or glycol extract with little oil; not tested."),
+    R(/hydrolyzed|keratin|collagen|\bsilk\b|sericin|protein|amino acids?|peptide|\b(serine|glycine|lysine|threonine|proline|alanine|histidine|phenylalanine|cysteine|cystine|leucine|valine|glutamic acid|aspartic acid|tyrosine|methionine|isoleucine|tryptophan|carnosine)\b/, "neutral", "inferred", "Protein / amino acid", "Not a lipid."),
+    R(/tocopher|ascorbic|retinol|biotin|caffeine|menthol|bisabolol|glycyrrhetinic|glycyrrhiza|glycyrrhizate|zinc (pca|gluconate|oxide)|pyridoxine|cyanocobalamin|riboflavin|thiamine|folic acid|ferulic acid|resveratrol|azelaic|madecassoside|asiaticoside|centella|cholesterol|phytosterol|sitosterol|piroctone/, "neutral", "inferred", "Vitamin / active", "Not a fatty-acid source."),
+    R(/\bwater\b|hydrosol|distillate|\bjuice\b/, "neutral", "inferred", "Plant water / juice", "Water-based; not a lipid."),
+    R(/kaolin|bentonite|silica|\bclay\b|charcoal|zeolite|\btalc\b|aluminum silicate|hectorite|calcium carbonate|magnesium silicate|alumina|boron nitride|\bsalt\b|maris sal/, "neutral", "inferred", "Mineral / clay", "Not a lipid."),
+    R(/^ci \d{5}|titanium dioxide|iron oxides?|\bmica\b|ultramarine|chromium oxide|\bcaramel\b|annatto/, "neutral", "inferred", "Colorant", "Not a lipid.")
+  ];
+
+  /* ---------- irritation / allergy rules ---------- */
+  var IRRITANT_RULES = [
+    { re: /isothiazolinone/, sev: "avoid", cat: "Strong sensitiser", note: "Strong contact sensitiser; no longer allowed in leave-on cosmetics in the EU.", src: ["eu1223"] },
+    { re: /dmdm hydantoin|imidazolidinyl urea|diazolidinyl urea|quaternium-15|bronopol|2-bromo-2-nitropropane|hydroxymethylglycinate/, sev: "watch", cat: "Formaldehyde releaser", note: "Formaldehyde-releasing preservative; a known contact allergen." },
+    { re: /^(parfum|fragrance|aroma|perfume)\b/, sev: "watch", cat: "Fragrance", note: "Fragrance mix: a common cause of cosmetic contact allergy.", src: ["eu1223"] },
+    { allergen: true, sev: "watch", cat: "Fragrance allergen", note: "EU-listed fragrance allergen: must be named on the label above trace levels.", src: ["eu1223"] },
+    { essential: true, sev: "watch", cat: "Essential oil", note: "Essential oil: fragrance chemicals that can cause contact allergy, especially once oxidised." },
+    { re: /^(alcohol|alcohol denat|ethanol|sd alcohol|denatured alcohol|isopropyl alcohol|ethyl alcohol)\b/, sev: "note", cat: "Drying solvent", note: "Drying solvent; can sting inflamed skin when high on the list." },
+    { re: /sodium lauryl sulfate|ammonium lauryl sulfate/, sev: "note", cat: "Harsh surfactant", note: "Harsh surfactant; used as a reference irritant in skin testing." },
+    { re: /cocamidopropyl betaine/, sev: "note", cat: "Occasional allergen", note: "Occasional contact allergen, often from manufacturing impurities." },
+    { re: /^propylene glycol$/, sev: "note", cat: "Occasional irritant", note: "Can irritate or sensitise some people." },
+    { re: /lanolin|adeps lanae|cera lanae/, sev: "note", cat: "Occasional allergen", note: "Wool-wax allergy occurs in some people." },
+    { re: /\bmenthol\b|menthyl lactate/, sev: "note", cat: "Cooling agent", note: "Cooling agent; can sting irritated skin." }
+  ];
+
+  function irritantFor(n) {
+    for (var i = 0; i < IRRITANT_RULES.length; i++) {
+      var r = IRRITANT_RULES[i];
+      if ((r.re && r.re.test(n)) || (r.allergen && isAllergen(n)) || (r.essential && isEssentialOil(n))) {
+        return { sev: r.sev, cat: r.cat, note: r.note, src: r.src || [] };
+      }
+    }
+    return null;
+  }
+
+  /* ---------- 1% line ---------- */
+  var CAPPED_MARKER = /phenoxyethanol|^benzyl alcohol$|^potassium sorbate$|chlorphenesin|isothiazolinone|iodopropynyl|dmdm hydantoin/;
+  var FRAGRANCE_MARKER = /^(parfum|fragrance|aroma|perfume)\b/;
+
+  function findTraceStart(items) {
+    var capped = -1, frag = -1;
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i].n;
+      if (capped < 0 && CAPPED_MARKER.test(n)) capped = i;
+      if (frag < 0 && (FRAGRANCE_MARKER.test(n) || isAllergen(n))) frag = i;
+    }
+    if (capped < 0 && frag < 0) return { index: -1, certainty: null, marker: null };
+    if (capped >= 0 && (frag < 0 || capped <= frag)) return { index: capped, certainty: "capped", marker: items[capped].name };
+    return { index: frag, certainty: "likely", marker: items[frag].name };
+  }
+
+  /* ---------- classify one ---------- */
+  function first(rules, n) {
+    for (var i = 0; i < rules.length; i++) if (rules[i].re.test(n)) return rules[i];
+    return null;
+  }
+
+  function classifyOne(name) {
+    var n = norm(name);
+    var r = first(RULES_A, n) || first(RULES_B, n);
+    var out = null;
+    if (r) out = { risk: r.risk, basis: (r.basis === "tested" && r.t && !r.t.test(n)) ? "group" : r.basis, cat: r.cat, note: r.note, src: r.src };
+    else if (isAllergen(n)) out = { risk: "neutral", basis: "inferred", cat: "Fragrance component", note: "Small fragrance molecule; not a fatty-acid source.", src: [] };
+    else if (isEssentialOil(n)) out = { risk: "neutral", basis: "inferred", cat: "Essential oil", note: "Volatile plant oil made of terpenes, not fatty-acid triglycerides; not tested for Malassezia growth.", src: [] };
+    else {
+      var c = first(RULES_C, n);
+      if (c && c.cat === "Plant butter") out = { risk: c.risk, basis: /shea|butyrospermum|vitellaria/.test(n) ? "tested" : c.basis, cat: c.cat, note: c.note, src: c.src };
+      else {
+        out = classifyOil(n);
+        if (!out && c) out = { risk: c.risk, basis: c.basis, cat: c.cat, note: c.note, src: c.src };
+        if (!out) out = classifyEster(n);
+        if (!out) { var d = first(RULES_D, n) || first(RULES_E, n); if (d) out = { risk: d.risk, basis: d.basis, cat: d.cat, note: d.note, src: d.src }; }
+      }
+    }
+    if (!out) out = { risk: "unknown", basis: null, cat: "Not recognised", note: "Not in the database. Ask Claude to classify it, or check its chemistry.", src: [] };
+    out.name = cleanName(name);
+    out.n = n;
+    out.irritant = irritantFor(n);
+    return out;
+  }
+
+  /* ---------- analyse list ---------- */
+  var LEVELS = [
+    { key: "minimal", label: "Minimal concern" },
+    { key: "low", label: "Low concern" },
+    { key: "moderate", label: "Moderate concern" },
+    { key: "high", label: "High concern" }
+  ];
+
+  function joinNames(arr) {
+    var names = arr.map(function (x) { return x.name; });
+    if (names.length <= 2) return names.join(" and ");
+    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  }
+
+  function analyse(raw, opts) {
+    opts = opts || {};
+    var names = Array.isArray(raw) ? raw.map(cleanName).filter(Boolean) : splitIngredients(raw);
+    var items = names.map(function (nm, i) { var o = classifyOne(nm); o.pos = i + 1; return o; });
+    return finish(items, opts);
+  }
+
+  function finish(items, opts) {
+    var trace = findTraceStart(items);
+    items.forEach(function (it, i) { it.trace = trace.index >= 0 && i >= trace.index; });
+
+    var level = 0, drivers = { highMain: [], highTrace: [], modMain: [], modTrace: [], low: [] };
+    items.forEach(function (it) {
+      if (it.risk === "high") { if (it.trace) { drivers.highTrace.push(it); level = Math.max(level, 2); } else { drivers.highMain.push(it); level = Math.max(level, 3); } }
+      else if (it.risk === "moderate") { if (it.trace) { drivers.modTrace.push(it); level = Math.max(level, 1); } else { drivers.modMain.push(it); level = Math.max(level, 2); } }
+      else if (it.risk === "low") { drivers.low.push(it); level = Math.max(level, 1); }
+    });
+    var rawLevel = level;
+    var rinse = opts.productType === "rinse";
+    if (rinse && level > 0) level -= 1;
+
+    var reason;
+    if (rawLevel === 3) reason = joinNames(drivers.highMain.slice(0, 3)) + (drivers.highMain.length > 1 ? " sit" : " sits") + " above the 1% line. These ingredient types fed Malassezia strongly in lab tests.";
+    else if (rawLevel === 2 && drivers.modMain.length) reason = joinNames(drivers.modMain.slice(0, 3)) + (drivers.modMain.length > 1 ? " sit" : " sits") + " above the 1% line. This group supported some Malassezia growth in lab tests." + (drivers.highTrace.length ? " " + joinNames(drivers.highTrace.slice(0, 2)) + " also appear, but only after the 1% line." : "");
+    else if (rawLevel === 2) reason = joinNames(drivers.highTrace.slice(0, 3)) + (drivers.highTrace.length > 1 ? " appear" : " appears") + " only after the 1% line, so in small amounts. In lab tests this type fed Malassezia strongly.";
+    else if (rawLevel === 1) reason = "Only weak flags: " + joinNames(drivers.low.concat(drivers.modTrace).slice(0, 3)) + ". Lab data point to growth only in species uncommon on the scalp, in trace amounts, or by an untested link.";
+    else reason = "Every recognised ingredient belongs to a group that showed no Malassezia growth in lab tests, or isn't a fatty-acid lipid.";
+    if (rinse && rawLevel > 0) reason += " Lowered one step because it rinses off; that adjustment is a judgement about contact time, not a study result.";
+
+    var unknown = items.filter(function (x) { return x.risk === "unknown"; });
+    var irritants = items.filter(function (x) { return x.irritant; });
+    var benefits = items.filter(function (x) { return x.risk === "benefit"; });
+    return {
+      items: items,
+      trace: trace,
+      level: level,
+      rawLevel: rawLevel,
+      levelKey: LEVELS[level].key,
+      levelLabel: LEVELS[level].label,
+      reason: reason,
+      unknown: unknown,
+      irritants: irritants,
+      benefits: benefits,
+      productType: rinse ? "rinse" : "leave"
+    };
+  }
+
+  function applyAI(result, aiList, opts) {
+    var byName = {};
+    (aiList || []).forEach(function (a) { if (a && a.name) byName[norm(a.name)] = a; });
+    var ok = { high: 1, moderate: 1, low: 1, minimal: 1, neutral: 1, benefit: 1, unknown: 1 };
+    result.items.forEach(function (it) {
+      if (it.risk !== "unknown") return;
+      var a = byName[it.n];
+      if (!a) return;
+      var risk = ok[a.risk] ? a.risk : "unknown";
+      it.risk = risk;
+      it.basis = "ai";
+      it.cat = String(a.category || "Classified by Claude").slice(0, 60);
+      it.note = String(a.reason || "").slice(0, 240) + (a.confidence ? " (Claude's confidence: " + String(a.confidence).slice(0, 10) + ")" : "");
+      it.src = [];
+      it.ai = true;
+      if (a.allergen && !it.irritant) it.irritant = { sev: "watch", cat: "Possible allergen", note: "Claude flagged this as a possible contact allergen or sensitiser.", src: [] };
+    });
+    return finish(result.items, { productType: opts && opts.productType ? opts.productType : result.productType });
+  }
+
+  var api = { SOURCES: SOURCES, RISKS: RISKS, BASIS: BASIS, splitIngredients: splitIngredients, classifyOne: classifyOne, analyse: analyse, applyAI: applyAI, norm: norm };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.ScalpEngine = api;
+})(typeof window !== "undefined" ? window : this);
+
+</script>
+<script>
+/* Scalp Ingredient Checker — text toolkit (no AI).
+   - extractIngredientBlock: finds the ingredient list inside messy page text
+   - cleanOcr + correctTokens: tidy OCR output and fix misread INCI names
+   Depends on ScalpEngine (engine.js). */
+(function (root) {
+  "use strict";
+  var E = root.ScalpEngine || (typeof require !== "undefined" ? require("./engine.js") : null);
+
+  var DICT = ("Aqua|Water|Glycerin|Propylene Glycol|Butylene Glycol|Propanediol|Pentylene Glycol|Dipropylene Glycol|Hexylene Glycol|Sorbitol|Panthenol|Niacinamide|Allantoin|Urea|Sodium PCA|Sodium Hyaluronate|Hyaluronic Acid|Betaine|Trehalose|Sodium Lactate|Lactic Acid|Citric Acid|Sodium Citrate|Sodium Hydroxide|Potassium Hydroxide|Aminomethyl Propanol|Triethanolamine|Tromethamine|Arginine|Sodium Chloride|Magnesium Sulfate|Disodium EDTA|Tetrasodium EDTA|Sodium Phytate|Tetrasodium Glutamate Diacetate|Phenoxyethanol|Ethylhexylglycerin|Caprylyl Glycol|1,2-Hexanediol|Sodium Benzoate|Potassium Sorbate|Benzoic Acid|Sorbic Acid|Dehydroacetic Acid|Sodium Dehydroacetate|Chlorphenesin|Benzyl Alcohol|Methylparaben|Propylparaben|Methylisothiazolinone|Methylchloroisothiazolinone|DMDM Hydantoin|Imidazolidinyl Urea|Iodopropynyl Butylcarbamate|Parfum|Fragrance|Linalool|Limonene|Citronellol|Geraniol|Hexyl Cinnamal|Amyl Cinnamal|Benzyl Salicylate|Benzyl Benzoate|Coumarin|Eugenol|Citral|Alpha-Isomethyl Ionone|Butylphenyl Methylpropional|Hydroxycitronellal|Isoeugenol|Cinnamal|Farnesol|Alcohol|Alcohol Denat|Isopropyl Alcohol|" +
+    "Dimethicone|Dimethiconol|Cyclopentasiloxane|Cyclotetrasiloxane|Cyclohexasiloxane|Cyclomethicone|Amodimethicone|Phenyl Trimethicone|Trisiloxane|Disiloxane|Bis-Aminopropyl Dimethicone|Bis-Cetearyl Amodimethicone|Dimethicone Crosspolymer|PEG-12 Dimethicone|Polysilicone-29|Silicone Quaternium-18|Aminopropyl Dimethicone|Trimethylsiloxyamodimethicone|" +
+    "Paraffinum Liquidum|Mineral Oil|Petrolatum|Squalane|Isododecane|Isohexadecane|C13-15 Alkane|C15-19 Alkane|C9-12 Alkane|C11-13 Isoparaffin|C13-14 Isoparaffin|Hydrogenated Polyisobutene|Hydrogenated Polydecene|Microcrystalline Wax|Ozokerite|Ceresin|Polyethylene|Hemisqualane|Coconut Alkanes|" +
+    "Carbomer|Acrylates Copolymer|Acrylates/C10-30 Alkyl Acrylate Crosspolymer|PVP|VP/VA Copolymer|Polyquaternium-7|Polyquaternium-10|Polyquaternium-11|Polyquaternium-37|Polyquaternium-55|Polyquaternium-68|Guar Hydroxypropyltrimonium Chloride|Hydroxyethylcellulose|Hydroxypropyl Methylcellulose|Cellulose Gum|Xanthan Gum|Sclerotium Gum|Carrageenan|Gellan Gum|Sodium Polyacrylate|Polyacrylamide|Sodium Acrylates Copolymer|Polyimide-1|Polyurethane-14|Zea Mays Starch|Hydroxypropyl Starch Phosphate|Caesalpinia Spinosa Gum|Poloxamer 407|" +
+    "Behentrimonium Chloride|Cetrimonium Chloride|Steartrimonium Chloride|Behentrimonium Methosulfate|Quaternium-80|Quaternium-87|Stearamidopropyl Dimethylamine|Behenamidopropyl Dimethylamine|Brassicamidopropyl Dimethylamine|Dicetyldimonium Chloride|Distearoylethyl Dimonium Chloride|Dipalmitoylethyl Hydroxyethylmonium Methosulfate|Behenoyl PG-Trimonium Chloride|Cocamidopropyl Betaine|" +
+    "Sodium Laureth Sulfate|Sodium Lauryl Sulfate|Ammonium Lauryl Sulfate|Ammonium Laureth Sulfate|Sodium Coco-Sulfate|Sodium C14-16 Olefin Sulfonate|Disodium Laureth Sulfosuccinate|Sodium Cocoyl Isethionate|Sodium Lauroyl Methyl Isethionate|Sodium Lauroyl Sarcosinate|Sodium Cocoyl Glutamate|Disodium Cocoyl Glutamate|Sodium Methyl Cocoyl Taurate|Sodium Cocoamphoacetate|Disodium Cocoamphodiacetate|Lauryl Betaine|Coco-Betaine|Cocamide MEA|Cocamide DEA|Lauramide DEA|Lactamide MEA|Coco-Glucoside|Decyl Glucoside|Lauryl Glucoside|Caprylyl/Capryl Glucoside|Cetearyl Glucoside|Glycol Distearate|" +
+    "Ceteareth-20|Ceteareth-25|Ceteareth-60 Myristyl Glycol|Steareth-2|Steareth-20|Steareth-21|Laureth-4|Laureth-23|Ceteth-20|Oleth-20|Trideceth-6|Trideceth-12|PEG-40 Hydrogenated Castor Oil|PEG-60 Hydrogenated Castor Oil|PEG-7 Glyceryl Cocoate|PEG-100 Stearate|PEG-40 Stearate|PEG-150 Distearate|PEG-8|PEG-32|PEG-7 Propylheptyl Ether|Polysorbate 20|Polysorbate 60|Polysorbate 80|Sorbitan Oleate|Sorbitan Stearate|Sorbitan Olivate|Glyceryl Stearate|Glyceryl Stearate SE|Glyceryl Stearate Citrate|Glyceryl Oleate|Glyceryl Caprylate|Polyglyceryl-3 Oleate|Polyglyceryl-4 Isostearate|Sucrose Stearate|Sucrose Palmitate|Methyl Glucose Sesquistearate|Cetearyl Olivate|Sodium Stearoyl Glutamate|Sodium Stearoyl Lactylate|Lecithin|Hydrogenated Lecithin|" +
+    "Cetearyl Alcohol|Cetyl Alcohol|Stearyl Alcohol|Behenyl Alcohol|Myristyl Alcohol|Lauryl Alcohol|Octyldodecanol|Stearic Acid|Palmitic Acid|Myristic Acid|Lauric Acid|Oleic Acid|Linoleic Acid|Capric Acid|Caprylic Acid|Isostearic Acid|" +
+    "Isopropyl Myristate|Isopropyl Palmitate|Ethylhexyl Palmitate|Ethylhexyl Stearate|Cetyl Palmitate|Myristyl Myristate|Decyl Oleate|Oleyl Oleate|Cetearyl Ethylhexanoate|Cetearyl Isononanoate|Isononyl Isononanoate|Ethylhexyl Isononanoate|Coco-Caprylate/Caprate|Coco-Caprylate|Dicaprylyl Carbonate|Dicaprylyl Ether|C12-15 Alkyl Benzoate|Caprylic/Capric Triglyceride|Propylheptyl Caprylate|Isoamyl Laurate|Diisopropyl Adipate|Ethylhexyl Methoxycinnamate|Butyl Methoxydibenzoylmethane|Octocrylene|Benzophenone-4|Tocopheryl Acetate|Tocopherol|Retinyl Palmitate|Ascorbyl Palmitate|" +
+    "Argania Spinosa Kernel Oil|Olea Europaea Fruit Oil|Cocos Nucifera Oil|Persea Gratissima Oil|Prunus Amygdalus Dulcis Oil|Prunus Armeniaca Kernel Oil|Simmondsia Chinensis Seed Oil|Helianthus Annuus Seed Oil|Helianthus Annuus Hybrid Oil|Ricinus Communis Seed Oil|Butyrospermum Parkii Butter|Theobroma Cacao Seed Butter|Vitis Vinifera Seed Oil|Macadamia Ternifolia Seed Oil|Camellia Oleifera Seed Oil|Sclerocarya Birrea Seed Oil|Moringa Oleifera Seed Oil|Oryza Sativa Bran Oil|Zea Mays Oil|Glycine Soja Oil|Linum Usitatissimum Seed Oil|Rosa Canina Fruit Oil|Cannabis Sativa Seed Oil|Hydrogenated Castor Oil|Hydrogenated Vegetable Oil|Elaeis Guineensis Oil|Brassica Campestris Seed Oil|Carthamus Tinctorius Seed Oil|Limnanthes Alba Seed Oil|Crambe Abyssinica Seed Oil|Cera Alba|Copernicia Cerifera Cera|Euphorbia Cerifera Cera|Lanolin|" +
+    "Lavandula Angustifolia Oil|Melaleuca Alternifolia Leaf Oil|Rosmarinus Officinalis Leaf Oil|Mentha Piperita Oil|Citrus Aurantium Dulcis Peel Oil|Citrus Limon Peel Oil|Eucalyptus Globulus Leaf Oil|Pogostemon Cablin Oil|Menthol|" +
+    "Hydrolyzed Keratin|Hydrolyzed Wheat Protein|Hydrolyzed Silk|Hydrolyzed Soy Protein|Keratin|Silk Amino Acids|Soy Amino Acids|Wheat Amino Acids|Serine|Glycine|Lysine HCl|Caffeine|Biotin|Bisabolol|Glycyrrhetinic Acid|Dipotassium Glycyrrhizate|Zinc PCA|Salicylic Acid|Piroctone Olamine|Ciclopirox Olamine|Climbazole|Ketoconazole|Zinc Pyrithione|Selenium Sulfide|Aloe Barbadensis Leaf Juice|Chamomilla Recutita Flower Extract|Calendula Officinalis Flower Extract|Mica|Titanium Dioxide|Butane|Propane|Isobutane|Kaolin|Silica|Sodium Polynaphthalenesulfonate|Distearyl Phthalic Acid Amide").split("|");
+
+  var DICT_N = DICT.map(function (d) { return { name: d, n: d.toLowerCase() }; });
+
+  function lev(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    var prev = new Array(b.length + 1), cur = new Array(b.length + 1);
+    for (var j = 0; j <= b.length; j++) prev[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      cur[0] = i; var rowMin = cur[0];
+      for (var k = 1; k <= b.length; k++) {
+        var c = a[i - 1] === b[k - 1] ? 0 : 1;
+        cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + c);
+        if (cur[k] < rowMin) rowMin = cur[k];
+      }
+      if (rowMin > max) return max + 1;
+      var t = prev; prev = cur; cur = t;
+    }
+    return prev[b.length];
+  }
+
+  /* OCR look-alikes inside alphabetic words: 0→o, 1/|→l, 5→s, 8→b */
+  function deglyph(s) {
+    return s.replace(/([a-z])[0](?=[a-z])/gi, "$1o").replace(/([a-z])[1|!](?=[a-z])/gi, "$1l")
+      .replace(/([a-z])5(?=[a-z])/gi, "$1s").replace(/rn/g, "m");
+  }
+
+  function digits(s) { return (s.match(/\d+/g) || []).join("-"); }
+  function bestMatch(token, ratio) {
+    var n = token.toLowerCase().replace(/\s*\(([^)]*)\)\s*/g, " ").replace(/\s+/g, " ").trim();
+    if (n.length < 4) return null;
+    var cands = [n, deglyph(n)];
+    var best = null, dg = digits(n);
+    cands.forEach(function (c) {
+      var max = Math.max(1, Math.floor(c.length * (ratio || 0.18)));
+      DICT_N.forEach(function (d) {
+        if (digits(d.n) !== dg) return;
+        var dist = lev(c, d.n, max);
+        if (dist <= max && (!best || dist < best.dist)) best = { name: d.name, dist: dist };
+      });
+    });
+    return best && best.name.toLowerCase() !== n ? best : null;
+  }
+
+  /* Fix tokens the engine doesn't recognise if a close dictionary match exists */
+  /* opts.ocr: also fix recognised-but-misspelled names (stricter threshold) */
+  function correctTokens(tokens, opts) {
+    var fixes = [], ocr = opts && opts.ocr;
+    var out = [];
+    tokens.forEach(function (t) {
+      var known = E.classifyOne(t).risk !== "unknown";
+      if (known && !(ocr && t.length >= 8)) { out.push(t); return; }
+      var m = bestMatch(t, known ? 0.12 : 0.18);
+      if (m) { fixes.push({ from: t, to: m.name }); out.push(m.name); return; }
+      if (!known && ocr) {
+        // OCR often glues junk words onto a name: try dropping 1-2 words at the ends
+        var w = t.split(/\s+/), variants = [];
+        if (w.length > 1) { variants.push(w.slice(0, -1)); variants.push(w.slice(1)); }
+        if (w.length > 2) { variants.push(w.slice(0, -2)); variants.push(w.slice(1, -1)); }
+        for (var i = 0; i < variants.length; i++) {
+          var v = variants[i].join(" ");
+          if (v.length < 4) continue;
+          if (E.classifyOne(v).risk !== "unknown") { fixes.push({ from: t, to: v }); out.push(v); return; }
+          var mv = bestMatch(v, 0.18);
+          if (mv) { fixes.push({ from: t, to: mv.name }); out.push(mv.name); return; }
+        }
+        // drop short junk fragments
+        if (t.replace(/[^a-z]/gi, "").length <= 4) { fixes.push({ from: t, to: "(removed)" }); return; }
+      }
+      out.push(t);
+    });
+    return { tokens: out, fixes: fixes };
+  }
+
+  function cleanOcr(text) {
+    var t = String(text || "").replace(/\r/g, "");
+    t = t.replace(/([a-z])-\n([a-z])/g, "$1$2");        // hyphenated line breaks
+    t = t.replace(/-\s*\n\s*(?=\d)/g, "-");              // PEG-\n40
+    t = t.replace(/[，‚]/g, ",").replace(/[“”„"]/g, "");
+    t = t.replace(/([a-z])\|(?=[a-z])/gi, "$1l");
+    // OCR reads commas as full stops; keep blank lines so section ends stay visible
+    t = t.replace(/\.(?=[ \t]+[A-Z(])/g, ",").replace(/\.(?=\n[A-Z(])/g, ",");
+    t = t.replace(/[©®™«»¢§¤°~^`*_‘’“”"]+/g, " ");      // stray OCR symbols
+    t = t.replace(/(^|[ \t])[|=.\-:]+(?=[ \t]|$)/gm, " ");   // isolated punctuation
+    return t.replace(/[ \t]+/g, " ");
+  }
+
+  /* ---------- find the ingredient list inside page text ---------- */
+  var LABEL = /(?:full\s+)?(?:ingredients?(?:\s+list)?|ingr[ée]dients|inci|composition|inhaltsstoffe|zusammensetzung|ingredienti|ingredientes|съставки|състав)\s*[:：]?/gi;
+  var LABEL_ONE = /(?:ingredients?(?:\s+list)?|ingr[ée]dients|inci|composition|inhaltsstoffe|zusammensetzung|ingredienti|ingredientes|съставки|състав)\s*[:：]?\s*/i;
+  var STOP = /\n\s*(?:how to use|directions|usage|use:|application|warnings?|caution|precautions|description|benefits|key ingredients|reviews?|made in|produced|manufactured|net wt|best before|batch|lot\b|\d+\s?(?:ml|g|oz)\b|начин на употреба|приложение|предупреждени[ея]|описание|предимства|ревюта|произведено|произход|годен до|партида|anwendung|warnhinweise|hergestellt|mode d'emploi|précautions|fabriqué)(?=[\s:.,!]|$)/i;
+
+  /* A token looks like an INCI name: short, no sentence punctuation, few words */
+  function plausible(t) {
+    if (t.length > 60) return false;
+    if (/[.!?]\s|&|%|\d+\s?h\b|\d+\s?ml\b/i.test(t)) return false;
+    return t.split(/\s+/).length <= 6;
+  }
+  function scoreBlock(s) {
+    var toks = E.splitIngredients(s);
+    if (toks.length < 3) return { score: 0, toks: toks, rec: 0 };
+    var rec = 0, bad = 0;
+    toks.forEach(function (t) {
+      if (!plausible(t)) { bad++; return; }
+      if (E.classifyOne(t).risk !== "unknown") rec++;
+    });
+    var ratio = rec / toks.length;
+    return { score: rec * ratio - bad * 2, toks: toks, rec: rec, ratio: ratio };
+  }
+
+  function cutBlock(s) {
+    var stop = s.search(STOP);
+    if (stop > 0) s = s.slice(0, stop);
+    // end at the first blank line once a comma list has started
+    var paras = s.split(/\n\s*\n/);
+    var acc = "";
+    for (var i = 0; i < paras.length; i++) {
+      acc += (acc ? "\n" : "") + paras[i];
+      if ((acc.match(/,/g) || []).length >= 3) break;
+    }
+    return acc.slice(0, 5000);
+  }
+
+  function extractIngredientBlock(text) {
+    var t = String(text || "").replace(/\r/g, "");
+    var cands = [];
+    var m; LABEL.lastIndex = 0;
+    while ((m = LABEL.exec(t)) && cands.length < 25) {
+      cands.push(cutBlock(t.slice(m.index + m[0].length)));
+    }
+    t.split(/\n\s*\n|\n(?=[^\n]{0,40}\n)/).forEach(function (p) {
+      if ((p.match(/,/g) || []).length >= 4) cands.push(p.slice(0, 5000));
+    });
+    var best = null;
+    cands.forEach(function (c) {
+      var s = scoreBlock(c);
+      if (s.rec >= 3 && s.ratio >= 0.35 && (!best || s.score > best.score)) best = { text: c.trim(), score: s.score, rec: s.rec, total: s.toks.length };
+    });
+    if (best) {
+      // drop any heading or prose before the last label inside the block
+      var parts = best.text.split(/\n/), cut = -1;
+      parts.forEach(function (line, i) { if (LABEL_ONE.test(line)) cut = i; });
+      if (cut >= 0) {
+        var line = parts[cut], mm = line.match(LABEL_ONE);
+        parts[cut] = line.slice(mm.index + mm[0].length);
+        best.text = parts.slice(cut).join("\n").trim();
+      }
+    }
+    return best;
+  }
+
+  /* INCI names are always in Latin script: cut anything from the first Cyrillic/Greek letter */
+  function latinOnly(tokens) {
+    return tokens.map(function (s) { return s.replace(/[\u0370-\u03FF\u0400-\u04FF].*$/, "").replace(/[\s,.;:]+$/, "").trim(); })
+      .filter(function (s) { return s.length > 1; });
+  }
+
+  var api = { latinOnly: latinOnly, extractIngredientBlock: extractIngredientBlock, cleanOcr: cleanOcr, correctTokens: correctTokens, bestMatch: bestMatch, DICT: DICT };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.ScalpText = api;
+})(typeof window !== "undefined" ? window : this);
+
+</script>
+<script>
+(function () {
+  "use strict";
+  var E = window.ScalpEngine, T = window.ScalpText;
+  var $ = function (s) { return document.querySelector(s); };
+  var state = { tab: "paste", type: "leave", result: null, selected: -1, srcLabel: "" };
+  var STORE_KEY = "scalpchecker:last";
+  var TESS_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+
+  var EXAMPLES = [
+    { id: "garnier", label: "Garnier Sleek & Shine serum", type: "leave", src: "Example · Garnier Fructis Sleek & Shine Anti-Frizz Serum, US retailer label",
+      text: "Cyclopentasiloxane, Dimethiconol, Parfum/Fragrance, Argania Spinosa Kernel Oil, Prunus Armeniaca Kernel Oil/Apricot Kernel Oil, Hexyl Cinnamal, Benzyl Alcohol, Linalool, Amyl Cinnamal." },
+    { id: "seen", label: "seeN Blow-Out Creme", type: "leave", src: "Example · seeN Blow-Out Creme, Fragrance Free, brand site",
+      text: "Water/Aqua/Eau, C13-15 Alkane, Cetearyl Alcohol, Glycerin, Squalane, Behentrimonium Chloride, Moringa Oleifera Seed Extract, Hydrolyzed Ceratonia Siliqua Seed Extract, VP/VA Copolymer, Disodium Phosphate, Guar Hydroxypropyltrimonium Chloride, Zea Mays (Corn) Starch, Polyquaternium-7, Tocopherol, Bisabolol, Citric Acid, Phenoxyethanol, Ethylhexylglycerin, Sodium Benzoate, Potassium Sorbate, Disodium EDTA" },
+    { id: "taft", label: "Taft styling gel", type: "leave", src: "Example · Schwarzkopf Taft styling gel, EU label via Codecheck",
+      text: "Aqua (Water, Eau), Alcohol denat., PVP, Phenoxyethanol, Carbomer, PEG-32, PEG-40 Hydrogenated Castor Oil, Aminomethyl Propanol, Parfum (Fragrance), Panthenol, Ethylhexylglycerin, Linalool, Benzyl Alcohol, Geraniol, Methyl Benzoate" },
+    { id: "syoss", label: "Syoss Curl Cream Gel", type: "leave", src: "Example · Syoss Curl Control Cream Gel, via Skincarisma",
+      text: "Water, PVP, Acrylates/Hydroxyesters Acrylates Copolymer, Glycerin, Acrylates/Steareth-20 Methacrylate Crosspolymer, Phenoxyethanol, Aminomethyl Propanol, Panthenol, Niacinamide, Benzyl Alcohol, Parfum, Caprylyl Glycol, Ricinus Communis Seed Oil, Cocos Nucifera Oil, Caprylyl/Capryl Glucoside, 1,2-Hexanediol, Ethylhexylglycerin, Sodium Benzoate, Terpineol" },
+    { id: "biosilk", label: "BioSilk Silk Therapy", type: "leave", src: "Example · BioSilk Silk Therapy Original, US retailer label",
+      text: "Cyclopentasiloxane, Cyclotetrasiloxane, Dimethiconol, Cyclohexasiloxane, Alcohol Denat., C12-15 Alkyl Benzoate." },
+    { id: "kelual", label: "Ducray Kelual DS shampoo", type: "rinse", src: "Example · Ducray Kelual DS shampoo, 2017 packaging (may since be reformulated)",
+      text: "Water (Aqua), Sodium Laureth Sulfate, PEG-7 Glyceryl Cocoate, Distearyl Phthalic Acid Amide, Polysorbate 20, Coco-Glucoside, Ciclopirox Olamine, Lauryl Betaine, Lactamide MEA, Ceteareth-60 Myristyl Glycol, Fragrance (Parfum), Glycyrrhetinic Acid, Polyquaternium-10, Sodium Chloride, Sodium Polynaphthalenesulfonate, Zinc Pyrithione." }
+  ];
+
+  /* ---------- helpers ---------- */
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function pill(risk, solid) { return el("span", { class: "pill sev-" + risk + (solid ? " solid" : ""), text: E.RISKS[risk].label }); }
+  function srcLinks(keys) {
+    if (!keys || !keys.length) return null;
+    return el("div", { class: "srcs" }, keys.map(function (k) {
+      var s = E.SOURCES[k]; if (!s) return null;
+      return el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.short });
+    }));
+  }
+  function setStatus(msg, isErr) { var s = $("#status"); s.textContent = msg || ""; s.classList.toggle("err", !!isErr); }
+  function busy(on, text) {
+    $("#busy").classList.toggle("on", !!on);
+    $("#busyText").textContent = text || "Working…";
+    $("#check").disabled = !!on; $("#readPage").disabled = !!on;
+    $("#readPhoto").disabled = !!on || !($("#photo").files && $("#photo").files[0]);
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ inci: $("#inci").value, type: state.type, src: state.srcLabel })); } catch (e) {}
+  }
+  function copyText(text, okMsg, target) {
+    var out = target || $("#copyStatus");
+    var fallback = function () {
+      var ta = el("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta); out.textContent = ok ? okMsg : "Couldn't copy here.";
+    };
+    try {
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { out.textContent = okMsg; }, fallback);
+      else fallback();
+    } catch (e) { fallback(); }
+  }
+
+  /* ---------- tabs and inputs ---------- */
+  function setTab(name) {
+    state.tab = name;
+    ["paste", "photo", "page"].forEach(function (t) {
+      $("#tab-" + t).setAttribute("aria-selected", t === name ? "true" : "false");
+      $("#p-" + t).hidden = t !== name;
+    });
+  }
+  ["paste", "photo", "page"].forEach(function (t) { $("#tab-" + t).addEventListener("click", function () { setTab(t); }); });
+
+  function setType(t) {
+    state.type = t;
+    $("#pt-" + t).checked = true;
+    $("#ptype-help").textContent = t === "rinse" ? "Shampoo, conditioner, mask: rinsed off within minutes." : "Styling cream, gel, serum, leave-in.";
+  }
+  document.querySelectorAll('input[name="ptype"]').forEach(function (r) {
+    r.addEventListener("change", function () { setType(r.value); if (state.result && state.result.items.length) run(true); });
+  });
+
+  EXAMPLES.forEach(function (ex) {
+    $("#examples").appendChild(el("button", { class: "chip", type: "button", text: ex.label, onclick: function () { loadExample(ex); } }));
+  });
+  function loadExample(ex) {
+    $("#inci").value = ex.text; setType(ex.type); state.srcLabel = ex.src; $("#fixes").textContent = ""; setTab("paste"); run();
+  }
+  $("#inci").addEventListener("input", function () { state.srcLabel = "Your list"; $("#fixes").textContent = ""; });
+  $("#check").addEventListener("click", function () {
+    if (!$("#inci").value.trim()) { setTab("paste"); setStatus("Paste an ingredient list first, or pick an example.", true); return; }
+    run();
+  });
+
+  /* ---------- from a web page ---------- */
+  function fromPageText(text, srcLabel) {
+    var block = T.extractIngredientBlock(text);
+    if (!block) { setStatus("Couldn't find an ingredient list in that text. Look for the Ingredients / Състав section on the page and paste just that part.", true); return false; }
+    var toks = T.latinOnly(E.splitIngredients(block.text));
+    var fx = T.correctTokens(toks);
+    $("#inci").value = fx.tokens.join(", ");
+    state.srcLabel = srcLabel || "Found in pasted page text";
+    showFixes(fx.fixes);
+    setTab("paste");
+    setStatus("Found " + toks.length + " ingredients. Check them against the page, then read the result.");
+    run(true);
+    return true;
+  }
+  $("#readPage").addEventListener("click", function () {
+    var t = $("#pagetext").value.trim();
+    if (!t) { setStatus("Paste the page text first.", true); return; }
+    fromPageText(t);
+  });
+
+  function appUrl() { return location.href.split("#")[0]; }
+  function bookmarkletCode() {
+    return "javascript:(function(){var d=document;" +
+      "function g(t){var re=/ingredients|ingr\\u00e9dients|inci|composition|\\u0441\\u044a\\u0441\\u0442\\u0430\\u0432|inhaltsstoffe/gi,m,p=[],n=0;while((m=re.exec(t))&&n<4){p.push(t.slice(Math.max(0,m.index-20),m.index+2200));n++;re.lastIndex=m.index+2200;}return p;}" +
+      "function ok(p){return p.some(function(w){return (w.slice(0,900).match(/,/g)||[]).length>=4;});}" +
+      "var p=g(d.body.innerText||'');" +
+      "if(!ok(p)){var c=d.body.cloneNode(true);c.querySelectorAll('script,style,noscript,svg,template').forEach(function(e){e.remove();});" +
+      "c.querySelectorAll('p,div,li,h1,h2,h3,h4,h5,td,th,dd,dt,section,article,br,span').forEach(function(e){e.append('\\n');});var q=g(c.textContent||'');if(ok(q))p=q.concat(p);}" +
+      "var s=(p.length?p.join('\\n\\n'):(d.body.innerText||'').slice(0,6000)).slice(0,7000);" +
+      "location.href='" + appUrl().replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/#/g, "\\x23") + "\\x23src='+encodeURIComponent(d.title.slice(0,80))+'&page='+encodeURIComponent(s);})();";
+  }
+  /* javascript: URLs are percent-decoded once before running, so escape % */
+  function bookmarkletHref() { return bookmarkletCode().replace(/%/g, "%25"); }
+  (function setupBookmarklet() {
+    var a = $("#bookmarklet");
+    a.setAttribute("href", bookmarkletHref());
+    a.addEventListener("click", function (ev) { ev.preventDefault(); $("#bmStatus").textContent = "Drag this button to your bookmarks bar, or copy the code."; });
+    $("#copyBm").addEventListener("click", function () { copyText(bookmarkletHref(), "Bookmark code copied.", $("#bmStatus")); });
+  })();
+
+  /* ---------- photo (on-device OCR) ---------- */
+  var tessPromise = null, worker = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (tessPromise) return tessPromise;
+    tessPromise = new Promise(function (res, rej) {
+      var s = document.createElement("script");
+      s.src = TESS_URL; s.async = true;
+      s.onload = function () { window.Tesseract ? res(window.Tesseract) : rej(new Error("missing")); };
+      s.onerror = function () { tessPromise = null; rej(new Error("load")); };
+      document.head.appendChild(s);
+    });
+    return tessPromise;
+  }
+  function progress(p) {
+    var bar = $("#ocrProgress"); bar.hidden = p == null;
+    if (p != null) bar.firstElementChild.style.width = Math.round(p * 100) + "%";
+  }
+  async function decode(file) {
+    try { return await createImageBitmap(file, { imageOrientation: "from-image" }); }
+    catch (e) {
+      return await new Promise(function (res, rej) { var i = new Image(); i.onload = function () { res(i); }; i.onerror = rej; i.src = URL.createObjectURL(file); });
+    }
+  }
+  /* Draw upright (applies phone EXIF rotation), optionally rescaled */
+  async function drawUpright(bmp, scale) {
+    var c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    var ctx = c.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(function (res) { c.toBlob(function (b) { res(b); }, "image/png"); });
+  }
+  function parseOcr(raw) {
+    var clean = T.cleanOcr(raw);
+    var block = T.extractIngredientBlock(clean);
+    var toks = T.latinOnly(E.splitIngredients(block ? block.text : clean));
+    var fx = T.correctTokens(toks, { ocr: true });
+    var rec = fx.tokens.filter(function (x) { return E.classifyOne(x).risk !== "unknown"; }).length;
+    return { fx: fx, rec: rec, total: fx.tokens.length };
+  }
+  var STAGES = { "loading tesseract core": "Downloading the reader…", "initializing tesseract": "Starting the reader…", "loading language traineddata": "Downloading English text data…", "initializing api": "Starting the reader…", "recognizing text": "Reading the label…" };
+  async function readPhoto() {
+    var f = $("#photo").files[0]; if (!f) return;
+    busy(true, "Preparing…"); setStatus(""); $("#fixes").textContent = ""; progress(0);
+    try {
+      var Tess = await loadTesseract();
+      if (!worker) {
+        worker = await Tess.createWorker("eng", 1, {
+          logger: function (m) {
+            if (m && m.status) { $("#busyText").textContent = STAGES[m.status] || "Working…"; if (typeof m.progress === "number") progress(m.progress); }
+          }
+        });
+      }
+      var bmp = await decode(f);
+      var longSide = Math.max(bmp.width, bmp.height);
+      var first = await drawUpright(bmp, longSide > 3200 ? 3200 / longSide : 1);
+      var out = await worker.recognize(first);
+      var best = parseOcr((out && out.data && out.data.text) || "");
+      // a weak read of a small image gets a second pass at double size
+      if ((best.rec < 6 || best.rec < best.total * 0.7) && longSide < 1600) {
+        $("#busyText").textContent = "Trying again at higher resolution…";
+        var second = parseOcr(((await worker.recognize(await drawUpright(bmp, 2))).data || {}).text || "");
+        if (second.rec > best.rec) best = second;
+      }
+      var fx = best.fx;
+      if (fx.tokens.length < 2) { setStatus("No ingredient list could be read. Try a closer, sharper photo cropped to the ingredients, with no glare.", true); return; }
+      $("#inci").value = fx.tokens.join(", ");
+      state.srcLabel = "Read from your photo";
+      showFixes(fx.fixes);
+      setTab("paste");
+      var unk = fx.tokens.filter(function (x) { return E.classifyOne(x).risk === "unknown"; }).length;
+      setStatus(unk ? "Read " + fx.tokens.length + " items; " + unk + " weren't recognised and may be misreads. Fix them in the box against the package, then press Check ingredients." : "Read " + fx.tokens.length + " ingredients. Compare with the package before relying on the result.", unk > 0);
+      run(true);
+    } catch (e) {
+      setStatus(e && e.message === "load" ? "Couldn't download the text reader. Photo reading needs an internet connection the first time." : "Couldn't read that image. Try a JPEG or PNG photo.", true);
+    } finally { busy(false); progress(null); }
+  }
+  $("#photo").addEventListener("change", function () {
+    var f = $("#photo").files[0], img = $("#preview");
+    if (f) { img.src = URL.createObjectURL(f); img.hidden = false; } else img.hidden = true;
+    $("#readPhoto").disabled = !f;
+  });
+  $("#readPhoto").addEventListener("click", readPhoto);
+
+  function showFixes(fixes) {
+    var box = $("#fixes"); box.innerHTML = "";
+    if (!fixes || !fixes.length) return;
+    box.appendChild(document.createTextNode("Corrected likely misreads: "));
+    fixes.slice(0, 12).forEach(function (f, i) {
+      if (i) box.appendChild(document.createTextNode("; "));
+      box.appendChild(document.createTextNode(f.from + " → "));
+      box.appendChild(el("b", { text: f.to }));
+    });
+    if (fixes.length > 12) box.appendChild(document.createTextNode("; and " + (fixes.length - 12) + " more"));
+    box.appendChild(document.createTextNode(". Undo any that are wrong in the box above."));
+  }
+
+  /* ---------- run and render ---------- */
+  function run(keepStatus) {
+    state.result = E.analyse($("#inci").value, { productType: state.type });
+    state.selected = pickDefault(state.result);
+    if (!keepStatus) setStatus(state.result.items.length ? "" : "No ingredients found in that text.", !state.result.items.length);
+    render(); save();
+  }
+  function pickDefault(r) {
+    var best = -1, rank = -9;
+    r.items.forEach(function (it, i) { var k = E.RISKS[it.risk].rank; if (it.risk !== "unknown" && k > rank) { rank = k; best = i; } });
+    return best;
+  }
+  function render() {
+    var r = state.result; if (!r) return;
+    renderVerdict(r); renderStrip(r); renderInspector(r); renderDrivers(r); renderIrritants(r); renderRest(r);
+  }
+  function searchLink(name) {
+    return el("a", { href: "https://duckduckgo.com/?q=" + encodeURIComponent('"' + name + '" INCI cosmetic ingredient'), target: "_blank", rel: "noopener", text: name });
+  }
+
+  function renderVerdict(r) {
+    var v = $("#verdict"); v.innerHTML = "";
+    v.className = "card verdict sev-" + r.levelKey;
+    if (!r.items.length) {
+      v.appendChild(el("p", { class: "what", text: "No list yet" }));
+      v.appendChild(el("p", { class: "reason", text: "Paste an ingredient list above, or tap an example." }));
+      return;
+    }
+    v.appendChild(el("p", { class: "what", text: (r.productType === "rinse" ? "Rinse-off" : "Leave-on") + " · Malassezia risk" }));
+    v.appendChild(el("h2", { class: "level", text: r.levelLabel }));
+    v.appendChild(el("p", { class: "reason", text: r.reason }));
+    var flagged = r.items.filter(function (x) { return x.risk === "high" || x.risk === "moderate" || x.risk === "low"; }).length;
+    v.appendChild(el("div", { class: "stats" }, [
+      el("span", {}, [el("b", { text: String(r.items.length) }), " ingredients"]),
+      el("span", {}, [el("b", { text: String(flagged) }), " flagged for yeast"]),
+      el("span", {}, [el("b", { text: String(r.irritants.length) }), " allergy/irritation notes"]),
+      el("span", {}, [el("b", { text: r.trace.index >= 0 ? "#" + (r.trace.index + 1) : "none" }), " 1% line"])
+    ]));
+    if (r.benefits.length) v.appendChild(el("div", { class: "callout good" }, [el("span", { text: "Contains an antifungal active: " + r.benefits.map(function (b) { return b.name; }).join(", ") + "." })]));
+    if (r.unknown.length) {
+      var links = el("div", { class: "unk" }, r.unknown.map(function (u) { return searchLink(u.name); }));
+      v.appendChild(el("div", { class: "callout" }, [
+        el("span", { text: r.unknown.length + " item" + (r.unknown.length > 1 ? "s aren't" : " isn't") + " in the database, so the verdict may be incomplete. If it's a misread or typo, fix it in the list. Otherwise, look it up: an oil, butter, wax or fatty ester would raise the concern." }),
+        links
+      ]));
+    }
+  }
+
+  function renderStrip(r) {
+    var s = $("#strip"); s.innerHTML = "";
+    $("#labelSrc").textContent = state.srcLabel || "Your list";
+    if (!r.items.length) { s.appendChild(el("span", { class: "empty", text: "Nothing to show yet." })); $("#legend").innerHTML = ""; return; }
+    s.appendChild(el("span", { class: "lead", text: "Ingredients:" }));
+    r.items.forEach(function (it, i) {
+      if (i === r.trace.index) s.appendChild(el("span", { class: "oneline", title: "Ingredients from here on are at or below 1% of the product", text: (r.trace.certainty === "capped" ? "≤1% from here" : "likely ≤1% from here") }));
+      var pick = function () { state.selected = i; renderStrip(state.result); renderInspector(state.result); var f = document.querySelector('.ing[data-i="' + i + '"]'); if (f) f.focus(); };
+      s.appendChild(el("span", { class: "ing sev-" + it.risk, role: "button", tabindex: "0", "data-i": String(i), "aria-pressed": i === state.selected ? "true" : "false",
+        "aria-label": it.pos + ". " + it.name + ": " + E.RISKS[it.risk].label + (it.trace ? ", at most 1%" : ""),
+        onclick: pick, onkeydown: function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(); } } },
+        [el("sup", { text: String(it.pos) }), it.name, it.irritant ? el("span", { class: "flag", "aria-hidden": "true", text: "⚑" }) : null]));
+      if (i < r.items.length - 1) s.appendChild(document.createTextNode(", "));
+    });
+    var lg = $("#legend"); lg.innerHTML = "";
+    ["high", "moderate", "low", "minimal", "neutral", "benefit", "unknown"].forEach(function (k) {
+      if (!r.items.some(function (x) { return x.risk === k; })) return;
+      lg.appendChild(el("span", { class: "sev-" + k }, [el("i"), E.RISKS[k].label]));
+    });
+    if (r.irritants.length) lg.appendChild(el("span", {}, ["⚑ allergy/irritation note"]));
+  }
+
+  function renderInspector(r) {
+    var box = $("#inspector"); box.innerHTML = "";
+    var it = r.items[state.selected];
+    if (!it) { box.appendChild(el("p", { class: "help", text: "Tap any ingredient on the label for its evidence." })); return; }
+    box.appendChild(el("div", { class: "top" }, [el("span", { class: "pos", text: "#" + it.pos + (it.trace ? " · at most 1%" : "") }), el("h3", { text: it.name }), pill(it.risk, true)]));
+    box.appendChild(el("div", { class: "basis", text: it.cat + (it.basis ? " · " + E.BASIS[it.basis] : "") }));
+    box.appendChild(el("p", { text: it.note }));
+    var sl = srcLinks(it.src); if (sl) box.appendChild(sl);
+    if (it.risk === "unknown") box.appendChild(el("div", { class: "srcs" }, [searchLink(it.name)]));
+    if (it.irritant) box.appendChild(el("p", { class: "irr" + (it.irritant.sev === "avoid" ? " avoid" : ""), text: it.irritant.cat + ": " + it.irritant.note }));
+  }
+
+  function itemRow(it, opts) {
+    opts = opts || {};
+    var body = el("div", { class: "body" }, [
+      el("div", { class: "title" }, [el("span", { class: "name", text: it.name }), opts.irr ? el("span", { class: "pill " + (it.irritant.sev === "avoid" ? "sev-high" : "sev-moderate"), text: it.irritant.cat }) : pill(it.risk), it.trace ? el("span", { class: "trace", text: "≤1%" }) : null]),
+      el("p", { text: opts.irr ? it.irritant.note : (it.cat + ". " + it.note) }),
+      opts.irr ? srcLinks(it.irritant.src) : srcLinks(it.src),
+      !opts.irr && it.basis ? el("span", { class: "basis", text: E.BASIS[it.basis] }) : null
+    ]);
+    return el("div", { class: "item" }, [el("span", { class: "n", text: "#" + it.pos }), body]);
+  }
+  function renderDrivers(r) {
+    var box = $("#drivers"); box.innerHTML = "";
+    var list = r.items.filter(function (x) { return x.risk === "high" || x.risk === "moderate" || x.risk === "low"; })
+      .sort(function (a, b) { return (E.RISKS[b.risk].rank - E.RISKS[a.risk].rank) || ((a.trace ? 1 : 0) - (b.trace ? 1 : 0)) || (a.pos - b.pos); });
+    if (!list.length) { box.appendChild(el("p", { class: "empty", text: r.items.length ? "Nothing flagged for Malassezia." : "Run a check to see results." })); return; }
+    list.forEach(function (it) { box.appendChild(itemRow(it)); });
+  }
+  function renderIrritants(r) {
+    var box = $("#irritants"); box.innerHTML = "";
+    if (!r.irritants.length) { box.appendChild(el("p", { class: "empty", text: r.items.length ? "No allergy or irritation notes." : "Run a check to see results." })); return; }
+    r.irritants.slice().sort(function (a, b) { return (a.irritant.sev === "avoid" ? -1 : 0) - (b.irritant.sev === "avoid" ? -1 : 0) || a.pos - b.pos; })
+      .forEach(function (it) { box.appendChild(itemRow(it, { irr: true })); });
+  }
+  function renderRest(r) {
+    var box = $("#rest"); box.innerHTML = "";
+    var any = false;
+    ["benefit", "minimal", "neutral", "unknown"].forEach(function (k) {
+      var items = r.items.filter(function (x) { return x.risk === k; });
+      if (!items.length) return; any = true;
+      box.appendChild(el("div", { class: "group" }, [
+        el("div", { class: "gh" }, [pill(k), el("span", { class: "help", text: E.RISKS[k].desc + " · " + items.length })]),
+        el("div", { class: "names", text: items.map(function (x) { return "#" + x.pos + " " + x.name; }).join(", ") })
+      ]));
+    });
+    if (!any) box.appendChild(el("p", { class: "empty", text: "Nothing else on this list." }));
+  }
+
+  /* ---------- copy / share ---------- */
+  $("#copy").addEventListener("click", function () {
+    var r = state.result; if (!r || !r.items.length) return;
+    var lines = ["Scalp Ingredient Checker: " + (state.srcLabel || "Your list"), (r.productType === "rinse" ? "Rinse-off" : "Leave-on") + " · " + r.levelLabel, r.reason];
+    if (r.trace.index >= 0) lines.push("1% line: from #" + (r.trace.index + 1) + " (" + r.trace.marker + ")" + (r.trace.certainty === "likely" ? ", likely" : ""));
+    lines.push("");
+    r.items.forEach(function (it) { lines.push("#" + it.pos + (it.trace ? " (≤1%)" : "") + " " + it.name + " | " + E.RISKS[it.risk].label + " | " + it.cat + (it.basis ? " | " + E.BASIS[it.basis] : "") + (it.irritant ? " | ⚑ " + it.irritant.cat : "")); });
+    lines.push("", "Evidence: in-vitro Malassezia studies (Dobler 2019, Mayser 1995/1997, Crit Care Med 1999), DeAngelis 2005, EU Reg. 1223/2009. Not medical advice.");
+    copyText(lines.join("\n"), "Report copied.");
+  });
+  $("#share").addEventListener("click", function () {
+    var list = $("#inci").value.trim(); if (!list) return;
+    var url = appUrl() + "#type=" + state.type + "&list=" + encodeURIComponent(list);
+    copyText(url, "Link copied. Anyone who opens it sees this check.");
+  });
+
+  /* ---------- static evidence ---------- */
+  (function renderStatic() {
+    var sc = $("#scale");
+    ["high", "moderate", "low", "minimal", "neutral", "benefit", "unknown"].forEach(function (k) { sc.appendChild(el("div", {}, [el("span", {}, [pill(k)]), el("span", { text: E.RISKS[k].desc })])); });
+    var bs = $("#basisScale");
+    var bdesc = { tested: "The ingredient itself was tested in a cited study.", group: "Other members of its chemical group were tested.", inferred: "Based on its chemistry; no direct test.", clinical: "A recognised medical or anti-dandruff active." };
+    Object.keys(bdesc).forEach(function (k) { bs.appendChild(el("div", {}, [el("span", { class: "basis", text: E.BASIS[k] }), el("span", { text: bdesc[k] })])); });
+    var so = $("#sources");
+    Object.keys(E.SOURCES).forEach(function (k) {
+      var s = E.SOURCES[k];
+      so.appendChild(el("div", { class: "source" }, [el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.short }), el("span", { class: "cite", text: s.full }), el("span", { text: s.what })]));
+    });
+  })();
+
+  /* ---------- boot ---------- */
+  function fromHash() {
+    if (!location.hash || location.hash.length < 2) return false;
+    var params;
+    try { params = new URLSearchParams(location.hash.slice(1)); } catch (e) { return false; }
+    var list = params.get("list"), page = params.get("page"), type = params.get("type"), src = params.get("src");
+    if (!list && !page) return false;
+    try { history.replaceState(null, "", appUrl()); } catch (e) {}
+    setType(type === "rinse" ? "rinse" : "leave");
+    if (list) { $("#inci").value = list; state.srcLabel = "Shared list"; run(); return true; }
+    $("#pagetext").value = page;
+    if (!fromPageText(page, src ? "From: " + src : "From a web page")) { setTab("page"); run(); }
+    return true;
+  }
+  if (!fromHash()) {
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) {}
+    if (saved && saved.inci) { $("#inci").value = saved.inci; setType(saved.type === "rinse" ? "rinse" : "leave"); state.srcLabel = saved.src || "Your last list"; run(); }
+    else loadExample(EXAMPLES[0]);
+  }
+  window.addEventListener("hashchange", fromHash);
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
